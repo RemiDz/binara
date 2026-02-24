@@ -383,50 +383,114 @@ class OceanSynth extends BaseSynth {
   }
 }
 
-// ─── Singing Bowls ───
+// ─── Singing Bowls (sustained resonance, not struck) ───
+
+const BOWL_FREQUENCIES = [
+  174,    // F3 — deep, grounding
+  220,    // A3 — warm
+  261.6,  // C4 — heart centre
+  293.7,  // D4 — sacral
+  329.6,  // E4 — solar plexus
+  392,    // G4 — throat
+  440,    // A4 — third eye
+  523.3,  // C5 — crown
+];
+
+const BOWL_PARTIALS = [
+  { ratio: 1.0,  gain: 0.035, detuneRange: 1.5 },
+  { ratio: 2.0,  gain: 0.020, detuneRange: 2.0 },
+  { ratio: 2.92, gain: 0.012, detuneRange: 2.5 },
+  { ratio: 4.1,  gain: 0.008, detuneRange: 3.0 },
+  { ratio: 5.18, gain: 0.005, detuneRange: 3.5 },
+];
 
 class BowlsSynth extends BaseSynth {
   start(ctx: AudioContext, destination: AudioNode): void {
     this.initOutput(ctx, destination);
-    this.scheduleBowlStrike();
+
+    // Start with first bowl immediately
+    this.startBowl();
+
+    // Stagger second bowl after 3–8 seconds
+    this.addTimeout(() => this.startBowl(), (3 + Math.random() * 5) * 1000);
+
+    // Third bowl after another 5–10 seconds
+    this.addTimeout(() => this.startBowl(), (8 + Math.random() * 10) * 1000);
   }
 
-  private scheduleBowlStrike(): void {
-    if (!this._active) return;
-    const delay = (3 + Math.random() * 7) * 1000;
+  private startBowl(): void {
+    if (!this._active || !this.ctx || !this._gainNode) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
 
-    this.addTimeout(() => {
-      if (!this._active || !this.ctx || !this._gainNode) return;
-      const now = this.ctx.currentTime;
+    const fundamental = BOWL_FREQUENCIES[Math.floor(Math.random() * BOWL_FREQUENCIES.length)];
 
-      // Quantised to musical intervals
-      const fundamental = 220 * Math.pow(2, Math.floor(Math.random() * 8) / 4);
-      const partials = [1, 2.1, 3.05, 4.18, 5.4];
-      const decayBase = 4 + Math.random() * 8;
+    const sustainDuration = 15 + Math.random() * 25;
+    const fadeInTime = 3 + Math.random() * 4;
+    const fadeOutTime = 4 + Math.random() * 5;
 
-      for (const partial of partials) {
-        const freq = fundamental * partial * (0.995 + Math.random() * 0.01);
-        const osc = this.trackOsc(this.ctx.createOscillator());
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now);
+    // Bowl-level gain envelope: gentle fade in → sustain → gentle fade out
+    const bowlGain = this.trackNode(ctx.createGain());
+    bowlGain.gain.setValueAtTime(0, now);
+    bowlGain.gain.linearRampToValueAtTime(1, now + fadeInTime);
+    bowlGain.gain.setValueAtTime(1, now + sustainDuration - fadeOutTime);
+    bowlGain.gain.linearRampToValueAtTime(0, now + sustainDuration);
 
-        const volume = 0.015 / partial;
-        const decay = decayBase / Math.sqrt(partial);
+    const panner = this.trackNode(ctx.createStereoPanner());
+    panner.pan.value = Math.random() * 0.6 - 0.3;
 
-        const gain = this.trackNode(this.ctx.createGain());
-        gain.gain.setValueAtTime(volume, now);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + decay);
+    bowlGain.connect(panner).connect(this._gainNode!);
 
-        const panner = this.trackNode(this.ctx.createStereoPanner());
-        panner.pan.value = Math.random() * 0.6 - 0.3;
+    for (const partial of BOWL_PARTIALS) {
+      const freq = fundamental * partial.ratio;
+      const detuneCents = partial.detuneRange;
 
-        osc.connect(gain).connect(panner).connect(this._gainNode!);
-        osc.start(now);
-        osc.stop(now + decay + 0.1);
-      }
+      // Pair of slightly detuned oscillators for natural beating/shimmer
+      const osc1 = this.trackOsc(ctx.createOscillator());
+      osc1.type = 'sine';
+      osc1.frequency.value = freq;
+      osc1.detune.value = -detuneCents / 2;
 
-      this.scheduleBowlStrike();
-    }, delay);
+      const osc2 = this.trackOsc(ctx.createOscillator());
+      osc2.type = 'sine';
+      osc2.frequency.value = freq;
+      osc2.detune.value = +detuneCents / 2;
+
+      const partialGain = this.trackNode(ctx.createGain());
+      partialGain.gain.value = partial.gain;
+
+      // Slow random drift on each oscillator to prevent perfectly periodic beating
+      const drift1 = this.trackOsc(ctx.createOscillator());
+      drift1.type = 'sine';
+      drift1.frequency.value = 0.02 + Math.random() * 0.05;
+      const driftGain1 = this.trackNode(ctx.createGain());
+      driftGain1.gain.value = freq * 0.001;
+      drift1.connect(driftGain1).connect(osc1.frequency);
+      drift1.start(now);
+      drift1.stop(now + sustainDuration + 0.5);
+
+      const drift2 = this.trackOsc(ctx.createOscillator());
+      drift2.type = 'sine';
+      drift2.frequency.value = 0.03 + Math.random() * 0.04;
+      const driftGain2 = this.trackNode(ctx.createGain());
+      driftGain2.gain.value = freq * 0.001;
+      drift2.connect(driftGain2).connect(osc2.frequency);
+      drift2.start(now);
+      drift2.stop(now + sustainDuration + 0.5);
+
+      osc1.connect(partialGain);
+      osc2.connect(partialGain);
+      partialGain.connect(bowlGain);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + sustainDuration + 0.5);
+      osc2.stop(now + sustainDuration + 0.5);
+    }
+
+    // Schedule next bowl to overlap (40–70% through this bowl's duration)
+    const overlapTime = sustainDuration * (0.4 + Math.random() * 0.3);
+    this.addTimeout(() => this.startBowl(), overlapTime * 1000);
   }
 }
 
