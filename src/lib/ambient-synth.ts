@@ -383,79 +383,47 @@ class OceanSynth extends BaseSynth {
   }
 }
 
-// ─── Singing Bowls (3 fixed sustained bowls, minimal randomisation) ───
+// ─── Singing Bowls (original buffer-loop — warm, authentic, steady) ───
 
 class BowlsSynth extends BaseSynth {
-  // 3 harmonically pleasant bowls — fixed, never random
-  private readonly BOWLS = [
-    { freq: 256, partials: [1, 2.0, 3.0], pan: -0.25 },     // C4 — root (left)
-    { freq: 384, partials: [1, 2.0, 2.95], pan: 0 },         // G4 — fifth (centre)
-    { freq: 512, partials: [1, 1.98, 3.02], pan: 0.25 },     // C5 — octave (right)
-  ];
+  private static readonly BUFFER_DURATION = 4; // seconds — loops seamlessly
+  private static readonly FREQUENCIES = [396, 528, 639];
+  private static readonly AMPLITUDES = [0.15, 0.12, 0.08];
 
   start(ctx: AudioContext, destination: AudioNode): void {
     this.initOutput(ctx, destination);
-    const now = ctx.currentTime;
 
-    // Create all 3 bowls immediately — they sustain for the entire session
-    for (const bowl of this.BOWLS) {
-      this.createSustainedBowl(bowl.freq, bowl.partials, bowl.pan, now);
-    }
+    const buffer = this.createBowlBuffer(ctx);
+
+    const source = this.trackSource(ctx.createBufferSource());
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(this._gainNode!);
+    source.start(ctx.currentTime);
   }
 
-  private createSustainedBowl(
-    fundamental: number,
-    partialRatios: number[],
-    panValue: number,
-    now: number,
-  ): void {
-    const ctx = this.ctx!;
-    const out = this._gainNode!;
+  private createBowlBuffer(ctx: AudioContext): AudioBuffer {
+    const length = ctx.sampleRate * BowlsSynth.BUFFER_DURATION;
+    const buffer = ctx.createBuffer(2, length, ctx.sampleRate);
 
-    const panner = this.trackNode(ctx.createStereoPanner());
-    panner.pan.value = panValue;
-    panner.connect(out);
-
-    for (const ratio of partialRatios) {
-      const freq = fundamental * ratio;
-
-      // Two oscillators slightly detuned = gentle beating/shimmer (0.6 Hz)
-      const osc1 = this.trackOsc(ctx.createOscillator());
-      osc1.type = 'sine';
-      osc1.frequency.value = freq - 0.3;
-
-      const osc2 = this.trackOsc(ctx.createOscillator());
-      osc2.type = 'sine';
-      osc2.frequency.value = freq + 0.3;
-
-      // Higher partials are quieter
-      const volume = ratio === 1 ? 0.06 : (ratio < 2.5 ? 0.03 : 0.015);
-
-      const gain = this.trackNode(ctx.createGain());
-      gain.gain.setValueAtTime(0, now);
-      // Gentle 4-second fade in
-      gain.gain.linearRampToValueAtTime(volume, now + 4);
-
-      osc1.connect(gain);
-      osc2.connect(gain);
-      gain.connect(panner);
-
-      osc1.start(now);
-      osc2.start(now);
-      // Oscillators run until stop() is called — no scheduling, no timeouts
+    for (let ch = 0; ch < 2; ch++) {
+      const data = buffer.getChannelData(ch);
+      for (let i = 0; i < length; i++) {
+        const t = i / ctx.sampleRate;
+        let sample = 0;
+        for (let f = 0; f < BowlsSynth.FREQUENCIES.length; f++) {
+          // Slight detuning per channel for stereo width
+          const freq = BowlsSynth.FREQUENCIES[f] + (ch === 0 ? -0.5 : 0.5) * (f + 1);
+          const amp = BowlsSynth.AMPLITUDES[f];
+          // Gentle amplitude envelope
+          const env = 0.6 + 0.4 * Math.sin(t * Math.PI * 2 / (BowlsSynth.BUFFER_DURATION * (f + 1)));
+          sample += Math.sin(t * freq * Math.PI * 2) * amp * env;
+        }
+        data[i] = sample;
+      }
     }
-  }
 
-  // Override stop for smooth fade out
-  stop(): void {
-    if (this._gainNode && this.ctx) {
-      this._gainNode.gain.setTargetAtTime(0, this.ctx.currentTime, 1);
-    }
-    // Let parent cleanup run after fade
-    setTimeout(() => {
-      super.stop();
-    }, 3000);
-    this._active = false;
+    return buffer;
   }
 }
 
@@ -622,7 +590,7 @@ class FireSynth extends BaseSynth {
     const now = ctx.currentTime;
     const out = this._gainNode!;
 
-    // Warm base: brown noise → lowpass
+    // Warm base: brown noise → lowpass (undertone, NOT dominant)
     const baseNoise = this.trackSource(createNoiseSource(ctx, 'brown'));
     const lp = this.trackNode(ctx.createBiquadFilter());
     lp.type = 'lowpass';
@@ -630,19 +598,40 @@ class FireSynth extends BaseSynth {
     lp.Q.setValueAtTime(0.3, now);
 
     const baseGain = this.trackNode(ctx.createGain());
-    baseGain.gain.setValueAtTime(0.25, now);
+    baseGain.gain.setValueAtTime(0.10, now);
 
     // Flickering LFO on base volume
     const flickerLfo = this.trackOsc(ctx.createOscillator());
     flickerLfo.type = 'sine';
     flickerLfo.frequency.setValueAtTime(0.08, now);
     const flickerGain = this.trackNode(ctx.createGain());
-    flickerGain.gain.setValueAtTime(0.08, now);
+    flickerGain.gain.setValueAtTime(0.04, now);
     flickerLfo.connect(flickerGain).connect(baseGain.gain);
     flickerLfo.start(now);
 
     baseNoise.connect(lp).connect(baseGain).connect(out);
     baseNoise.start(now);
+
+    // Mid-high hiss layer — the "air" of a fire (separates it from brown noise)
+    const hissNoise = this.trackSource(createNoiseSource(ctx, 'white'));
+    const hissFilter = this.trackNode(ctx.createBiquadFilter());
+    hissFilter.type = 'bandpass';
+    hissFilter.frequency.setValueAtTime(3000, now);
+    hissFilter.Q.setValueAtTime(0.3, now);
+    const hissGain = this.trackNode(ctx.createGain());
+    hissGain.gain.setValueAtTime(0.08, now);
+
+    // Slow modulation — fire intensity rises and falls
+    const hissLfo = this.trackOsc(ctx.createOscillator());
+    hissLfo.type = 'sine';
+    hissLfo.frequency.setValueAtTime(0.06, now);
+    const hissLfoGain = this.trackNode(ctx.createGain());
+    hissLfoGain.gain.setValueAtTime(0.03, now);
+    hissLfo.connect(hissLfoGain).connect(hissGain.gain);
+    hissLfo.start(now);
+
+    hissNoise.connect(hissFilter).connect(hissGain).connect(out);
+    hissNoise.start(now);
 
     // Drift flicker rate
     this.addInterval(() => {
@@ -650,21 +639,21 @@ class FireSynth extends BaseSynth {
       flickerLfo.frequency.setTargetAtTime(0.04 + Math.random() * 0.06, this.ctx.currentTime, 3);
     }, (15 + Math.random() * 15) * 1000);
 
-    // Crackle
+    // Crackle (dominant character of fire)
     this.scheduleCrackle();
 
-    // Pops
+    // Pops (sharp snaps)
     this.schedulePop();
   }
 
   private scheduleCrackle(): void {
     if (!this._active) return;
-    const delay = 100 + Math.random() * 400;
+    const delay = 80 + Math.random() * 170; // 80–250ms — frequent
 
     this.addTimeout(() => {
       if (!this._active || !this.ctx || !this._gainNode) return;
 
-      const bufferSize = 64 + Math.floor(Math.random() * 256);
+      const bufferSize = 32 + Math.floor(Math.random() * 96); // Short, sharp bursts
       const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < bufferSize; i++) {
@@ -676,11 +665,11 @@ class FireSynth extends BaseSynth {
 
       const filter = this.trackNode(this.ctx.createBiquadFilter());
       filter.type = 'bandpass';
-      filter.frequency.value = 800 + Math.random() * 3000;
+      filter.frequency.value = 1500 + Math.random() * 3500; // 1500–5000Hz
       filter.Q.value = 0.5 + Math.random() * 2;
 
       const gain = this.trackNode(this.ctx.createGain());
-      gain.gain.value = 0.03 + Math.random() * 0.05;
+      gain.gain.value = 0.10 + Math.random() * 0.10; // 0.10–0.20
 
       const panner = this.trackNode(this.ctx.createStereoPanner());
       panner.pan.value = Math.random() * 1.0 - 0.5;
@@ -694,13 +683,13 @@ class FireSynth extends BaseSynth {
 
   private schedulePop(): void {
     if (!this._active) return;
-    const delay = (3 + Math.random() * 12) * 1000;
+    const delay = (2 + Math.random() * 8) * 1000;
 
     this.addTimeout(() => {
       if (!this._active || !this.ctx || !this._gainNode) return;
       const now = this.ctx.currentTime;
 
-      const bufferSize = 32;
+      const bufferSize = 16 + Math.floor(Math.random() * 16); // Very short snap
       const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < bufferSize; i++) {
@@ -712,10 +701,10 @@ class FireSynth extends BaseSynth {
 
       const hp = this.trackNode(this.ctx.createBiquadFilter());
       hp.type = 'highpass';
-      hp.frequency.value = 1000;
+      hp.frequency.value = 2000 + Math.random() * 2000; // 2–4 kHz
 
       const gain = this.trackNode(this.ctx.createGain());
-      gain.gain.setValueAtTime(0.06 + Math.random() * 0.06, now);
+      gain.gain.setValueAtTime(0.08 + Math.random() * 0.07, now); // 0.08–0.15
       gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
 
       const panner = this.trackNode(this.ctx.createStereoPanner());
