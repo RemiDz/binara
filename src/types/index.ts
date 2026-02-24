@@ -71,8 +71,7 @@ export interface AppState {
   sessionDuration: number;
   elapsedTime: number;
   volume: number;
-  activeAmbient: string | null;
-  ambientVolume: number;
+  ambientLayers: { id: string; volume: number }[];
   showPlayer: boolean;
   showMiniPlayer: boolean;
   onboardingComplete: boolean;
@@ -102,8 +101,7 @@ export type AppAction =
   | { type: 'SET_SESSION_DURATION'; payload: number }
   | { type: 'SET_ELAPSED_TIME'; payload: number }
   | { type: 'SET_VOLUME'; payload: number }
-  | { type: 'SET_ACTIVE_AMBIENT'; payload: string | null }
-  | { type: 'SET_AMBIENT_VOLUME'; payload: number }
+  | { type: 'SET_AMBIENT_LAYERS'; payload: { id: string; volume: number }[] }
   | { type: 'SET_SHOW_PLAYER'; payload: boolean }
   | { type: 'SET_SHOW_MINI_PLAYER'; payload: boolean }
   | { type: 'SET_ONBOARDING_COMPLETE'; payload: boolean }

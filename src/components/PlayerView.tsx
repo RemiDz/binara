@@ -16,8 +16,7 @@ interface PlayerViewProps {
   elapsedTime: number;
   sessionDuration: number;
   volume: number;
-  activeAmbient: string | null;
-  ambientVolume: number;
+  ambientLayers: { id: string; volume: number }[];
   onBack: () => void;
   onPlay: () => void;
   onStop: () => void;
@@ -25,8 +24,10 @@ interface PlayerViewProps {
   onResume: () => void;
   onVolumeChange: (vol: number) => void;
   onDurationChange: (d: number) => void;
-  onAmbientChange: (id: string | null) => void;
-  onAmbientVolumeChange: (vol: number) => void;
+  onToggleAmbient: (id: string) => void;
+  onUpdateLayerVolume: (id: string, volume: number) => void;
+  onRemoveLayer: (id: string) => void;
+  onClearAmbient: () => void;
 }
 
 export default function PlayerView({
@@ -36,8 +37,7 @@ export default function PlayerView({
   elapsedTime,
   sessionDuration,
   volume,
-  activeAmbient,
-  ambientVolume,
+  ambientLayers,
   onBack,
   onPlay,
   onStop,
@@ -45,8 +45,10 @@ export default function PlayerView({
   onResume,
   onVolumeChange,
   onDurationChange,
-  onAmbientChange,
-  onAmbientVolumeChange,
+  onToggleAmbient,
+  onUpdateLayerVolume,
+  onRemoveLayer,
+  onClearAmbient,
 }: PlayerViewProps) {
   const playerState = !isPlaying && !isPaused ? 'pre-play' : isPlaying && !isPaused ? 'playing' : 'paused';
 
@@ -130,10 +132,11 @@ export default function PlayerView({
         {/* Ambient */}
         {(isPlaying || isPaused) && (
           <AmbientSelector
-            activeAmbient={activeAmbient}
-            ambientVolume={ambientVolume}
-            onAmbientChange={onAmbientChange}
-            onAmbientVolumeChange={onAmbientVolumeChange}
+            ambientLayers={ambientLayers}
+            onToggleAmbient={onToggleAmbient}
+            onUpdateLayerVolume={onUpdateLayerVolume}
+            onRemoveLayer={onRemoveLayer}
+            onClearAmbient={onClearAmbient}
           />
         )}
 

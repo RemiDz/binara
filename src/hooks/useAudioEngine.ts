@@ -32,6 +32,13 @@ export interface UseAudioEngineReturn {
   playCompletionChime: () => Promise<void>;
   getElapsedTime: () => number;
   getEngine: () => AudioEngine;
+  // Background audio
+  resumeFromBackground: () => Promise<void>;
+  setupMediaSession: (title: string, category: string, callbacks: {
+    onPause?: () => void;
+    onResume?: () => void;
+    onStop?: () => void;
+  }) => void;
   // Advanced mode
   playAdvanced: (layers: BeatLayer[]) => Promise<void>;
   stopAdvanced: () => void;
@@ -292,6 +299,18 @@ export function useAudioEngine(): UseAudioEngineReturn {
     engineRef.current?.disableSpatialRotation();
   }, []);
 
+  const resumeFromBackground = useCallback(async () => {
+    await engineRef.current?.resumeFromBackground();
+  }, []);
+
+  const setupMediaSession = useCallback((title: string, category: string, callbacks: {
+    onPause?: () => void;
+    onResume?: () => void;
+    onStop?: () => void;
+  }) => {
+    engineRef.current?.setupMediaSession(title, category, callbacks);
+  }, []);
+
   useEffect(() => {
     return () => {
       stopPolling();
@@ -324,6 +343,8 @@ export function useAudioEngine(): UseAudioEngineReturn {
     playCompletionChime,
     getElapsedTime,
     getEngine,
+    resumeFromBackground,
+    setupMediaSession,
     // Advanced mode
     playAdvanced,
     stopAdvanced,

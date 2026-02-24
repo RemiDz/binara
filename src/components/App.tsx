@@ -152,6 +152,7 @@ export default function App() {
     const count = parseInt(localStorage.getItem('binara_sessions_count') || '0');
     localStorage.setItem('binara_sessions_count', String(count + 1));
     audio.stopWithLongFade();
+    audio.stopAllAmbientLayers();
     await audio.playCompletionChime();
     dispatch({ type: 'COMPLETE_SESSION' });
   }, [audio, dispatch, state.sessionDuration, state.activePreset]);
@@ -178,13 +179,11 @@ export default function App() {
   const handleStop = useCallback(() => {
     trackEvent('Session Abandon', { mode: 'easy', elapsed: state.elapsedTime, total: state.sessionDuration * 60 });
     audio.stop();
-    if (state.activeAmbient) {
-      audio.removeAmbient();
-    }
+    audio.stopAllAmbientLayers();
     setTimeout(() => {
       dispatch({ type: 'STOP_SESSION' });
     }, 1600);
-  }, [audio, state.activeAmbient, dispatch]);
+  }, [audio, dispatch]);
 
   const handlePause = useCallback(async () => {
     await audio.pause();
@@ -201,19 +200,37 @@ export default function App() {
     audio.setVolume(vol);
   }, [audio, dispatch]);
 
-  const handleAmbientChange = useCallback(async (id: string | null) => {
-    if (id === null) {
-      audio.removeAmbient();
-      dispatch({ type: 'SET_ACTIVE_AMBIENT', payload: null });
+  const handleToggleAmbient = useCallback((id: string) => {
+    const exists = state.ambientLayers.find((l) => l.id === id);
+    if (exists) {
+      // Remove layer
+      audio.removeAmbientLayer(id);
+      const updated = state.ambientLayers.filter((l) => l.id !== id);
+      dispatch({ type: 'SET_AMBIENT_LAYERS', payload: updated });
     } else {
-      await audio.addAmbient(id, state.ambientVolume);
-      dispatch({ type: 'SET_ACTIVE_AMBIENT', payload: id });
+      // Add layer
+      const volume = 50;
+      audio.addAmbientLayer(id, volume);
+      const updated = [...state.ambientLayers, { id, volume }];
+      dispatch({ type: 'SET_AMBIENT_LAYERS', payload: updated });
     }
-  }, [audio, state.ambientVolume, dispatch]);
+  }, [audio, state.ambientLayers, dispatch]);
 
-  const handleAmbientVolumeChange = useCallback((vol: number) => {
-    dispatch({ type: 'SET_AMBIENT_VOLUME', payload: vol });
-    audio.setAmbientVolume(vol);
+  const handleUpdateLayerVolume = useCallback((id: string, volume: number) => {
+    audio.setAmbientLayerVolume(id, volume);
+    const updated = state.ambientLayers.map((l) => l.id === id ? { ...l, volume } : l);
+    dispatch({ type: 'SET_AMBIENT_LAYERS', payload: updated });
+  }, [audio, state.ambientLayers, dispatch]);
+
+  const handleRemoveLayer = useCallback((id: string) => {
+    audio.removeAmbientLayer(id);
+    const updated = state.ambientLayers.filter((l) => l.id !== id);
+    dispatch({ type: 'SET_AMBIENT_LAYERS', payload: updated });
+  }, [audio, state.ambientLayers, dispatch]);
+
+  const handleClearAmbient = useCallback(() => {
+    audio.stopAllAmbientLayers();
+    dispatch({ type: 'SET_AMBIENT_LAYERS', payload: [] });
   }, [audio, dispatch]);
 
   const handleBackFromPlayer = useCallback(() => {
@@ -477,6 +494,79 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.isPlaying, state.isPaused, state.showAdvancedPlayer]);
 
+  // ─── Background audio recovery ───
+
+  // Resume audio + check session completion when page regains visibility
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState !== 'visible') return;
+      if (!state.isPlaying || state.isPaused) return;
+
+      // Resume AudioContext if browser suspended it
+      audio.resumeFromBackground();
+
+      // Check if any session completed while in background
+      const elapsed = audio.getElapsedTime();
+      const durationSecs = state.sessionDuration * 60;
+
+      if (elapsed >= durationSecs) {
+        if (state.showAdvancedPlayer) {
+          handleAdvancedSessionComplete();
+        } else if (state.showMixPlayer) {
+          handleMixSessionComplete();
+        } else if (state.showPlayer) {
+          handleSessionComplete();
+        }
+        return;
+      }
+
+      // Update displayed time immediately (catches up from background)
+      dispatch({ type: 'SET_ELAPSED_TIME', payload: elapsed });
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.isPlaying, state.isPaused, state.sessionDuration, state.showPlayer, state.showMixPlayer, state.showAdvancedPlayer]);
+
+  // Set up Media Session API when any session starts
+  useEffect(() => {
+    if (!state.isPlaying) return;
+
+    let title = 'Binaural Session';
+    let category = 'Binaural Beats';
+
+    if (state.activePreset && state.showPlayer) {
+      title = state.activePreset.name;
+      category = state.activePreset.category;
+    } else if (state.mixConfig && state.showMixPlayer) {
+      title = 'Custom Mix';
+      category = 'Mix Mode';
+    } else if (state.advancedConfig && state.showAdvancedPlayer) {
+      title = 'Advanced Session';
+      category = 'Create Mode';
+    }
+
+    audio.setupMediaSession(title, category, {
+      onPause: () => {
+        audio.pause().then(() => dispatch({ type: 'SET_IS_PAUSED', payload: true }));
+      },
+      onResume: () => {
+        audio.resume().then(() => dispatch({ type: 'SET_IS_PAUSED', payload: false }));
+      },
+      onStop: () => {
+        if (state.showAdvancedPlayer) {
+          handleStopAdvancedSession();
+        } else if (state.showMixPlayer) {
+          handleStopMixSession();
+        } else {
+          handleStop();
+        }
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.isPlaying]);
+
   // ─── Render ───
 
   // Show onboarding if not complete
@@ -698,8 +788,7 @@ export default function App() {
           elapsedTime={state.elapsedTime}
           sessionDuration={state.sessionDuration}
           volume={state.volume}
-          activeAmbient={state.activeAmbient}
-          ambientVolume={state.ambientVolume}
+          ambientLayers={state.ambientLayers}
           onBack={handleBackFromPlayer}
           onPlay={handlePlay}
           onStop={handleStop}
@@ -707,8 +796,10 @@ export default function App() {
           onResume={handleResume}
           onVolumeChange={handleVolumeChange}
           onDurationChange={(d) => dispatch({ type: 'SET_SESSION_DURATION', payload: d })}
-          onAmbientChange={handleAmbientChange}
-          onAmbientVolumeChange={handleAmbientVolumeChange}
+          onToggleAmbient={handleToggleAmbient}
+          onUpdateLayerVolume={handleUpdateLayerVolume}
+          onRemoveLayer={handleRemoveLayer}
+          onClearAmbient={handleClearAmbient}
         />
       </>
     );

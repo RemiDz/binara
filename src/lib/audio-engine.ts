@@ -1,11 +1,6 @@
 import type { AudioEngineConfig, AmbientLayerConfig, BeatLayer, FilterConfig, LFOConfig, IsochronicConfig } from '@/types';
 import { VOLUME_HARD_CAP } from './constants';
-import { generateAmbientBuffer } from './ambient-synth';
-
-interface AmbientLayerState {
-  source: AudioBufferSourceNode;
-  gain: GainNode;
-}
+import { createAmbientSynth, type AmbientSynth } from './ambient-synth';
 
 interface BeatLayerAudioState {
   oscL: OscillatorNode;
@@ -28,9 +23,8 @@ export class AudioEngine {
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
 
-  // Multi-ambient support
-  private ambientLayers: Map<string, AmbientLayerState> = new Map();
-  private ambientBufferCache: Map<string, AudioBuffer> = new Map();
+  // Multi-ambient support (procedural synth instances)
+  private ambientLayers: Map<string, AmbientSynth> = new Map();
 
   // Legacy single-ambient (Phase 1 compat)
   private _legacyAmbientId: string | null = null;
@@ -40,6 +34,22 @@ export class AudioEngine {
   private startTime = 0;
   private pauseOffset = 0;
   private stopTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  // Wall-clock timing (survives AudioContext suspension)
+  private wallStartTime = 0;
+  private wallPauseOffset = 0;
+
+  // Background audio support
+  private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
+  private silentAudio: HTMLAudioElement | null = null;
+  private _visibilityHandlerSetup = false;
+
+  // Media session callbacks (set by consumer)
+  private _mediaSessionCallbacks: {
+    onPause?: () => void;
+    onResume?: () => void;
+    onStop?: () => void;
+  } = {};
 
   // ─── Advanced mode state ───
   private _advancedMode = false;
@@ -86,6 +96,8 @@ export class AudioEngine {
 
     this.compressor.connect(this.masterGain);
     this.masterGain.connect(this.ctx.destination);
+
+    this.setupVisibilityHandler();
   }
 
   get isInitialized(): boolean {
@@ -143,6 +155,11 @@ export class AudioEngine {
     this._isPaused = false;
     this.startTime = now;
     this.pauseOffset = 0;
+    this.wallStartTime = Date.now();
+    this.wallPauseOffset = 0;
+
+    this.startKeepAlive();
+    this.startSilentAudioElement();
   }
 
   stop(): void {
@@ -187,10 +204,13 @@ export class AudioEngine {
   }
 
   private fadeOutAllAmbient(now: number, tau: number): void {
-    for (const [, layer] of this.ambientLayers) {
-      layer.gain.gain.cancelScheduledValues(now);
-      layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
-      layer.gain.gain.setTargetAtTime(0, now, tau);
+    for (const [, synth] of this.ambientLayers) {
+      const gain = synth.gainNode;
+      if (gain) {
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(gain.gain.value, now);
+        gain.gain.setTargetAtTime(0, now, tau);
+      }
     }
   }
 
@@ -221,11 +241,17 @@ export class AudioEngine {
     this._isPaused = false;
     this._legacyAmbientId = null;
     this.pauseOffset = 0;
+    this.wallPauseOffset = 0;
+
+    this.stopKeepAlive();
+    this.stopSilentAudioElement();
+    this.clearMediaSession();
   }
 
   async pause(): Promise<void> {
     if (!this.ctx || !this._isPlaying || this._isPaused) return;
     this.pauseOffset = this.ctx.currentTime - this.startTime + this.pauseOffset;
+    this.wallPauseOffset += Date.now() - this.wallStartTime;
     await this.ctx.suspend();
     this._isPaused = true;
   }
@@ -234,6 +260,7 @@ export class AudioEngine {
     if (!this.ctx || !this._isPaused) return;
     await this.ctx.resume();
     this.startTime = this.ctx.currentTime;
+    this.wallStartTime = Date.now();
     this._isPaused = false;
   }
 
@@ -270,52 +297,23 @@ export class AudioEngine {
     // Stop this layer if already playing
     this.stopAmbientLayerById(id);
 
-    let buffer = this.ambientBufferCache.get(id);
-    if (!buffer) {
-      buffer = generateAmbientBuffer(this.ctx, id);
-      this.ambientBufferCache.set(id, buffer);
-    }
-
-    const gain = this.ctx.createGain();
-    const now = this.ctx.currentTime;
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(Math.min(volume, 1), now + 1);
-    gain.connect(this.compressor);
-
-    const source = this.ctx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-    source.connect(gain);
-    source.start(now);
-
-    this.ambientLayers.set(id, { source, gain });
+    const synth = createAmbientSynth(id);
+    synth.start(this.ctx, this.compressor);
+    synth.setVolume(Math.min(volume, 1));
+    this.ambientLayers.set(id, synth);
   }
 
   stopAmbientLayerById(id: string): void {
-    const layer = this.ambientLayers.get(id);
-    if (!layer || !this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    layer.gain.gain.cancelScheduledValues(now);
-    layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
-    layer.gain.gain.setTargetAtTime(0, now, 0.2);
-
-    const src = layer.source;
-    const g = layer.gain;
-    setTimeout(() => {
-      try { src.stop(); } catch { /* already stopped */ }
-      src.disconnect();
-      g.disconnect();
-    }, 1200);
-
+    const synth = this.ambientLayers.get(id);
+    if (!synth) return;
+    synth.stop();
     this.ambientLayers.delete(id);
   }
 
   setAmbientLayerVolume(id: string, volume: number): void {
-    const layer = this.ambientLayers.get(id);
-    if (!layer || !this.ctx) return;
-    const safeVol = Math.min(Math.max(volume, 0), 1);
-    layer.gain.gain.setTargetAtTime(safeVol, this.ctx.currentTime, 0.02);
+    const synth = this.ambientLayers.get(id);
+    if (!synth) return;
+    synth.setVolume(Math.min(Math.max(volume, 0), 1));
   }
 
   stopAllAmbientLayers(): void {
@@ -325,10 +323,8 @@ export class AudioEngine {
   }
 
   private stopAllAmbientLayersImmediate(): void {
-    for (const [, layer] of this.ambientLayers) {
-      try { layer.source.stop(); } catch { /* already stopped */ }
-      layer.source.disconnect();
-      layer.gain.disconnect();
+    for (const [, synth] of this.ambientLayers) {
+      synth.stop();
     }
     this.ambientLayers.clear();
   }
@@ -400,9 +396,9 @@ export class AudioEngine {
   }
 
   getElapsedTime(): number {
-    if (!this.ctx || !this._isPlaying) return this.pauseOffset;
-    if (this._isPaused) return this.pauseOffset;
-    return this.ctx.currentTime - this.startTime + this.pauseOffset;
+    if (!this._isPlaying) return this.wallPauseOffset / 1000;
+    if (this._isPaused) return this.wallPauseOffset / 1000;
+    return (Date.now() - this.wallStartTime + this.wallPauseOffset) / 1000;
   }
 
   async playCompletionChime(): Promise<void> {
@@ -461,6 +457,11 @@ export class AudioEngine {
     this._isPaused = false;
     this.startTime = now;
     this.pauseOffset = 0;
+    this.wallStartTime = Date.now();
+    this.wallPauseOffset = 0;
+
+    this.startKeepAlive();
+    this.startSilentAudioElement();
   }
 
   private createBeatLayerNodes(layer: BeatLayer): void {
@@ -576,7 +577,12 @@ export class AudioEngine {
     this._isPlaying = false;
     this._isPaused = false;
     this.pauseOffset = 0;
+    this.wallPauseOffset = 0;
     this._stereoWidth = 100;
+
+    this.stopKeepAlive();
+    this.stopSilentAudioElement();
+    this.clearMediaSession();
   }
 
   setBeatLayerFrequency(id: string, carrier: number, beat: number): void {
@@ -937,13 +943,151 @@ export class AudioEngine {
     }
   }
 
+  // ─── Background audio support ───
+
+  private setupVisibilityHandler(): void {
+    if (this._visibilityHandlerSetup) return;
+    this._visibilityHandlerSetup = true;
+
+    const handleResume = () => {
+      if (this._isPlaying && !this._isPaused) {
+        this.resumeFromBackground();
+      }
+    };
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') handleResume();
+    });
+    window.addEventListener('focus', handleResume);
+  }
+
+  async resumeFromBackground(): Promise<void> {
+    if (!this.ctx) return;
+    if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
+      try {
+        await this.ctx.resume();
+      } catch (e) {
+        console.warn('Failed to resume AudioContext:', e);
+      }
+    }
+  }
+
+  private startKeepAlive(): void {
+    this.stopKeepAlive();
+    this.keepAliveInterval = setInterval(() => {
+      if (this.ctx && this.ctx.state === 'running') {
+        const buffer = this.ctx.createBuffer(1, 1, this.ctx.sampleRate);
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(this.ctx.destination);
+        source.start();
+      }
+    }, 10000);
+  }
+
+  private stopKeepAlive(): void {
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
+    }
+  }
+
+  private startSilentAudioElement(): void {
+    if (this.silentAudio) return;
+
+    const silentWav = this.createSilentWav();
+    const blob = new Blob([silentWav], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+
+    this.silentAudio = new Audio(url);
+    this.silentAudio.loop = true;
+    this.silentAudio.volume = 0.01;
+    this.silentAudio.play().catch(() => {
+      // Autoplay may be blocked — will start on next user gesture
+    });
+  }
+
+  private createSilentWav(): ArrayBuffer {
+    const sampleRate = 8000;
+    const numSamples = sampleRate; // 1 second
+    const buffer = new ArrayBuffer(44 + numSamples * 2);
+    const view = new DataView(buffer);
+
+    const writeString = (offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + numSamples * 2, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(36, 'data');
+    view.setUint32(40, numSamples * 2, true);
+
+    // Silent samples — already zero-initialised by ArrayBuffer
+    return buffer;
+  }
+
+  private stopSilentAudioElement(): void {
+    if (this.silentAudio) {
+      this.silentAudio.pause();
+      const src = this.silentAudio.src;
+      this.silentAudio.src = '';
+      this.silentAudio = null;
+      URL.revokeObjectURL(src);
+    }
+  }
+
+  setupMediaSession(title: string, category: string, callbacks: {
+    onPause?: () => void;
+    onResume?: () => void;
+    onStop?: () => void;
+  }): void {
+    this._mediaSessionCallbacks = callbacks;
+    if (!('mediaSession' in navigator)) return;
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: title || 'Binaural Session',
+      artist: 'Binara',
+      album: category || 'Binaural Beats',
+    });
+
+    navigator.mediaSession.setActionHandler('play', () => {
+      callbacks.onResume?.();
+    });
+
+    navigator.mediaSession.setActionHandler('pause', () => {
+      callbacks.onPause?.();
+    });
+
+    navigator.mediaSession.setActionHandler('stop', () => {
+      callbacks.onStop?.();
+    });
+  }
+
+  private clearMediaSession(): void {
+    this._mediaSessionCallbacks = {};
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.setActionHandler('play', null);
+      navigator.mediaSession.setActionHandler('pause', null);
+      navigator.mediaSession.setActionHandler('stop', null);
+    }
+  }
+
   destroy(): void {
     if (this._advancedMode) {
       this.stopAdvancedImmediate();
     } else {
       this.stopImmediate();
     }
-    this.ambientBufferCache.clear();
     if (this.compressor) {
       this.compressor.disconnect();
       this.compressor = null;

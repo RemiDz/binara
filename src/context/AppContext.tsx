@@ -11,8 +11,7 @@ const initialState: AppState = {
   sessionDuration: 20,
   elapsedTime: 0,
   volume: 50,
-  activeAmbient: null,
-  ambientVolume: 40,
+  ambientLayers: [],
   showPlayer: false,
   showMiniPlayer: false,
   onboardingComplete: false,
@@ -50,10 +49,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, elapsedTime: action.payload };
     case 'SET_VOLUME':
       return { ...state, volume: action.payload };
-    case 'SET_ACTIVE_AMBIENT':
-      return { ...state, activeAmbient: action.payload };
-    case 'SET_AMBIENT_VOLUME':
-      return { ...state, ambientVolume: action.payload };
+    case 'SET_AMBIENT_LAYERS':
+      return { ...state, ambientLayers: action.payload };
     case 'SET_SHOW_PLAYER':
       return { ...state, showPlayer: action.payload };
     case 'SET_SHOW_MINI_PLAYER':
@@ -86,7 +83,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         elapsedTime: 0,
         showPlayer: false,
         showMiniPlayer: false,
-        activeAmbient: null,
+        ambientLayers: [],
         sessionComplete: false,
       };
     case 'COMPLETE_SESSION':
