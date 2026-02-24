@@ -235,7 +235,7 @@ class RainSynth extends BaseSynth {
       filter.frequency.value = 1500 + Math.random() * 4000;
 
       const gain = this.trackNode(this.ctx.createGain());
-      gain.gain.value = 0.01 + Math.random() * 0.04;
+      gain.gain.value = 0.02 + Math.random() * 0.04;
 
       const panner = this.trackNode(this.ctx.createStereoPanner());
       panner.pan.value = Math.random() * 2 - 1;
@@ -261,7 +261,7 @@ class RainSynth extends BaseSynth {
 
       const gain = this.trackNode(this.ctx.createGain());
       const now = this.ctx.currentTime;
-      const vol = 0.03 + Math.random() * 0.03;
+      const vol = 0.05 + Math.random() * 0.04;
       gain.gain.setValueAtTime(0, now);
       gain.gain.linearRampToValueAtTime(vol, now + 0.5);
       gain.gain.setTargetAtTime(0, now + 0.8, 0.3);
@@ -334,7 +334,7 @@ class OceanSynth extends BaseSynth {
     foamHp.type = 'highpass';
     foamHp.frequency.setValueAtTime(3000, now);
     const foamGain = this.trackNode(ctx.createGain());
-    foamGain.gain.setValueAtTime(0.03, now);
+    foamGain.gain.setValueAtTime(0.05, now);
 
     const foamLfo = this.trackOsc(ctx.createOscillator());
     foamLfo.type = 'sine';
@@ -368,7 +368,7 @@ class OceanSynth extends BaseSynth {
 
       const gain = this.trackNode(this.ctx.createGain());
       gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.04 + Math.random() * 0.04, now + 0.3);
+      gain.gain.linearRampToValueAtTime(0.06 + Math.random() * 0.05, now + 0.3);
       gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
       const panner = this.trackNode(this.ctx.createStereoPanner());
@@ -383,114 +383,79 @@ class OceanSynth extends BaseSynth {
   }
 }
 
-// ─── Singing Bowls (sustained resonance, not struck) ───
-
-const BOWL_FREQUENCIES = [
-  174,    // F3 — deep, grounding
-  220,    // A3 — warm
-  261.6,  // C4 — heart centre
-  293.7,  // D4 — sacral
-  329.6,  // E4 — solar plexus
-  392,    // G4 — throat
-  440,    // A4 — third eye
-  523.3,  // C5 — crown
-];
-
-const BOWL_PARTIALS = [
-  { ratio: 1.0,  gain: 0.035, detuneRange: 1.5 },
-  { ratio: 2.0,  gain: 0.020, detuneRange: 2.0 },
-  { ratio: 2.92, gain: 0.012, detuneRange: 2.5 },
-  { ratio: 4.1,  gain: 0.008, detuneRange: 3.0 },
-  { ratio: 5.18, gain: 0.005, detuneRange: 3.5 },
-];
+// ─── Singing Bowls (3 fixed sustained bowls, minimal randomisation) ───
 
 class BowlsSynth extends BaseSynth {
+  // 3 harmonically pleasant bowls — fixed, never random
+  private readonly BOWLS = [
+    { freq: 256, partials: [1, 2.0, 3.0], pan: -0.25 },     // C4 — root (left)
+    { freq: 384, partials: [1, 2.0, 2.95], pan: 0 },         // G4 — fifth (centre)
+    { freq: 512, partials: [1, 1.98, 3.02], pan: 0.25 },     // C5 — octave (right)
+  ];
+
   start(ctx: AudioContext, destination: AudioNode): void {
     this.initOutput(ctx, destination);
-
-    // Start with first bowl immediately
-    this.startBowl();
-
-    // Stagger second bowl after 3–8 seconds
-    this.addTimeout(() => this.startBowl(), (3 + Math.random() * 5) * 1000);
-
-    // Third bowl after another 5–10 seconds
-    this.addTimeout(() => this.startBowl(), (8 + Math.random() * 10) * 1000);
-  }
-
-  private startBowl(): void {
-    if (!this._active || !this.ctx || !this._gainNode) return;
-    const ctx = this.ctx;
     const now = ctx.currentTime;
 
-    const fundamental = BOWL_FREQUENCIES[Math.floor(Math.random() * BOWL_FREQUENCIES.length)];
+    // Create all 3 bowls immediately — they sustain for the entire session
+    for (const bowl of this.BOWLS) {
+      this.createSustainedBowl(bowl.freq, bowl.partials, bowl.pan, now);
+    }
+  }
 
-    const sustainDuration = 15 + Math.random() * 25;
-    const fadeInTime = 3 + Math.random() * 4;
-    const fadeOutTime = 4 + Math.random() * 5;
-
-    // Bowl-level gain envelope: gentle fade in → sustain → gentle fade out
-    const bowlGain = this.trackNode(ctx.createGain());
-    bowlGain.gain.setValueAtTime(0, now);
-    bowlGain.gain.linearRampToValueAtTime(1, now + fadeInTime);
-    bowlGain.gain.setValueAtTime(1, now + sustainDuration - fadeOutTime);
-    bowlGain.gain.linearRampToValueAtTime(0, now + sustainDuration);
+  private createSustainedBowl(
+    fundamental: number,
+    partialRatios: number[],
+    panValue: number,
+    now: number,
+  ): void {
+    const ctx = this.ctx!;
+    const out = this._gainNode!;
 
     const panner = this.trackNode(ctx.createStereoPanner());
-    panner.pan.value = Math.random() * 0.6 - 0.3;
+    panner.pan.value = panValue;
+    panner.connect(out);
 
-    bowlGain.connect(panner).connect(this._gainNode!);
+    for (const ratio of partialRatios) {
+      const freq = fundamental * ratio;
 
-    for (const partial of BOWL_PARTIALS) {
-      const freq = fundamental * partial.ratio;
-      const detuneCents = partial.detuneRange;
-
-      // Pair of slightly detuned oscillators for natural beating/shimmer
+      // Two oscillators slightly detuned = gentle beating/shimmer (0.6 Hz)
       const osc1 = this.trackOsc(ctx.createOscillator());
       osc1.type = 'sine';
-      osc1.frequency.value = freq;
-      osc1.detune.value = -detuneCents / 2;
+      osc1.frequency.value = freq - 0.3;
 
       const osc2 = this.trackOsc(ctx.createOscillator());
       osc2.type = 'sine';
-      osc2.frequency.value = freq;
-      osc2.detune.value = +detuneCents / 2;
+      osc2.frequency.value = freq + 0.3;
 
-      const partialGain = this.trackNode(ctx.createGain());
-      partialGain.gain.value = partial.gain;
+      // Higher partials are quieter
+      const volume = ratio === 1 ? 0.06 : (ratio < 2.5 ? 0.03 : 0.015);
 
-      // Slow random drift on each oscillator to prevent perfectly periodic beating
-      const drift1 = this.trackOsc(ctx.createOscillator());
-      drift1.type = 'sine';
-      drift1.frequency.value = 0.02 + Math.random() * 0.05;
-      const driftGain1 = this.trackNode(ctx.createGain());
-      driftGain1.gain.value = freq * 0.001;
-      drift1.connect(driftGain1).connect(osc1.frequency);
-      drift1.start(now);
-      drift1.stop(now + sustainDuration + 0.5);
+      const gain = this.trackNode(ctx.createGain());
+      gain.gain.setValueAtTime(0, now);
+      // Gentle 4-second fade in
+      gain.gain.linearRampToValueAtTime(volume, now + 4);
 
-      const drift2 = this.trackOsc(ctx.createOscillator());
-      drift2.type = 'sine';
-      drift2.frequency.value = 0.03 + Math.random() * 0.04;
-      const driftGain2 = this.trackNode(ctx.createGain());
-      driftGain2.gain.value = freq * 0.001;
-      drift2.connect(driftGain2).connect(osc2.frequency);
-      drift2.start(now);
-      drift2.stop(now + sustainDuration + 0.5);
-
-      osc1.connect(partialGain);
-      osc2.connect(partialGain);
-      partialGain.connect(bowlGain);
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(panner);
 
       osc1.start(now);
       osc2.start(now);
-      osc1.stop(now + sustainDuration + 0.5);
-      osc2.stop(now + sustainDuration + 0.5);
+      // Oscillators run until stop() is called — no scheduling, no timeouts
     }
+  }
 
-    // Schedule next bowl to overlap (40–70% through this bowl's duration)
-    const overlapTime = sustainDuration * (0.4 + Math.random() * 0.3);
-    this.addTimeout(() => this.startBowl(), overlapTime * 1000);
+  // Override stop for smooth fade out
+  stop(): void {
+    if (this._gainNode && this.ctx) {
+      this._gainNode.gain.setTargetAtTime(0, this.ctx.currentTime, 1);
+    }
+    // Let parent cleanup run after fade
+    setTimeout(() => {
+      super.stop();
+    }, 3000);
+    this._active = false;
   }
 }
 
@@ -510,7 +475,7 @@ class ForestSynth extends BaseSynth {
     bp.Q.setValueAtTime(0.5, now);
 
     const baseGain = this.trackNode(ctx.createGain());
-    baseGain.gain.setValueAtTime(0.08, now);
+    baseGain.gain.setValueAtTime(0.20, now);
 
     noise.connect(bp).connect(baseGain).connect(out);
     noise.start(now);
@@ -521,11 +486,11 @@ class ForestSynth extends BaseSynth {
     windLfo.frequency.setValueAtTime(0.02 + Math.random() * 0.03, now);
 
     const windFreqGain = this.trackNode(ctx.createGain());
-    windFreqGain.gain.setValueAtTime(300, now);
+    windFreqGain.gain.setValueAtTime(600, now);
     windLfo.connect(windFreqGain).connect(bp.frequency);
 
     const windVolGain = this.trackNode(ctx.createGain());
-    windVolGain.gain.setValueAtTime(0.025, now);
+    windVolGain.gain.setValueAtTime(0.06, now);
     windLfo.connect(windVolGain).connect(baseGain.gain);
 
     windLfo.start(now);
@@ -535,6 +500,27 @@ class ForestSynth extends BaseSynth {
       if (!this._active || !this.ctx) return;
       windLfo.frequency.setTargetAtTime(0.02 + Math.random() * 0.03, this.ctx.currentTime, 5);
     }, (25 + Math.random() * 20) * 1000);
+
+    // Foliage / leaves layer: brown noise through bandpass 300–800Hz
+    const foliageNoise = this.trackSource(createNoiseSource(ctx, 'brown'));
+    const foliageFilter = this.trackNode(ctx.createBiquadFilter());
+    foliageFilter.type = 'bandpass';
+    foliageFilter.frequency.setValueAtTime(500, now);
+    foliageFilter.Q.setValueAtTime(0.5, now);
+    const foliageGain = this.trackNode(ctx.createGain());
+    foliageGain.gain.setValueAtTime(0.10, now);
+
+    // Slow volume modulation (wind through leaves)
+    const foliageLfo = this.trackOsc(ctx.createOscillator());
+    foliageLfo.type = 'sine';
+    foliageLfo.frequency.setValueAtTime(0.05, now);
+    const foliageLfoGain = this.trackNode(ctx.createGain());
+    foliageLfoGain.gain.setValueAtTime(0.05, now);
+    foliageLfo.connect(foliageLfoGain).connect(foliageGain.gain);
+    foliageLfo.start(now);
+
+    foliageNoise.connect(foliageFilter).connect(foliageGain).connect(out);
+    foliageNoise.start(now);
 
     // Bird calls
     this.scheduleBirdCall();
@@ -560,7 +546,7 @@ class ForestSynth extends BaseSynth {
 
       const gain = this.trackNode(this.ctx.createGain());
       gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.008 + Math.random() * 0.01, now + 0.02);
+      gain.gain.linearRampToValueAtTime(0.04 + Math.random() * 0.04, now + 0.02);
 
       if (callType === 0) {
         // Short chirp
@@ -579,8 +565,8 @@ class ForestSynth extends BaseSynth {
         for (let i = 0; i < trillCount; i++) {
           const t = now + i * noteLength;
           osc.frequency.setValueAtTime(baseFreq * (1 + Math.random() * 0.2), t);
-          gain.gain.setValueAtTime(0.008, t);
-          gain.gain.linearRampToValueAtTime(0.002, t + noteLength * 0.8);
+          gain.gain.setValueAtTime(0.04, t);
+          gain.gain.linearRampToValueAtTime(0.01, t + noteLength * 0.8);
         }
         gain.gain.linearRampToValueAtTime(0.0001, now + duration);
       }
@@ -613,7 +599,7 @@ class ForestSynth extends BaseSynth {
 
       const gain = this.trackNode(this.ctx.createGain());
       gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.02 + Math.random() * 0.02, now + 0.05);
+      gain.gain.linearRampToValueAtTime(0.06 + Math.random() * 0.04, now + 0.05);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
       const panner = this.trackNode(this.ctx.createStereoPanner());
@@ -640,18 +626,18 @@ class FireSynth extends BaseSynth {
     const baseNoise = this.trackSource(createNoiseSource(ctx, 'brown'));
     const lp = this.trackNode(ctx.createBiquadFilter());
     lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(300, now);
+    lp.frequency.setValueAtTime(500, now);
     lp.Q.setValueAtTime(0.3, now);
 
     const baseGain = this.trackNode(ctx.createGain());
-    baseGain.gain.setValueAtTime(0.15, now);
+    baseGain.gain.setValueAtTime(0.25, now);
 
     // Flickering LFO on base volume
     const flickerLfo = this.trackOsc(ctx.createOscillator());
     flickerLfo.type = 'sine';
-    flickerLfo.frequency.setValueAtTime(0.04 + Math.random() * 0.06, now);
+    flickerLfo.frequency.setValueAtTime(0.08, now);
     const flickerGain = this.trackNode(ctx.createGain());
-    flickerGain.gain.setValueAtTime(0.04, now);
+    flickerGain.gain.setValueAtTime(0.08, now);
     flickerLfo.connect(flickerGain).connect(baseGain.gain);
     flickerLfo.start(now);
 
@@ -694,7 +680,7 @@ class FireSynth extends BaseSynth {
       filter.Q.value = 0.5 + Math.random() * 2;
 
       const gain = this.trackNode(this.ctx.createGain());
-      gain.gain.value = 0.008 + Math.random() * 0.02;
+      gain.gain.value = 0.03 + Math.random() * 0.05;
 
       const panner = this.trackNode(this.ctx.createStereoPanner());
       panner.pan.value = Math.random() * 1.0 - 0.5;
@@ -729,7 +715,7 @@ class FireSynth extends BaseSynth {
       hp.frequency.value = 1000;
 
       const gain = this.trackNode(this.ctx.createGain());
-      gain.gain.setValueAtTime(0.04 + Math.random() * 0.04, now);
+      gain.gain.setValueAtTime(0.06 + Math.random() * 0.06, now);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
 
       const panner = this.trackNode(this.ctx.createStereoPanner());
