@@ -972,7 +972,7 @@ export default function App() {
           <>
             <CategoryFilter />
             <HeadphoneBanner />
-            <PresetGrid />
+            <PresetGrid miniPlayerVisible={state.showMiniPlayer} />
           </>
         )}
 
