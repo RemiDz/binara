@@ -428,40 +428,56 @@ class BowlsSynth extends BaseSynth {
 }
 
 // ─── Forest ───
+// Architecture: wind/foliage background + FM-modulated bird phrases with
+// individual notes (attack-sustain-release), vibrato, silence gaps, multiple birds.
 
 class ForestSynth extends BaseSynth {
+  private birdCount = 3;
+
   start(ctx: AudioContext, destination: AudioNode): void {
     this.initOutput(ctx, destination);
     const now = ctx.currentTime;
     const out = this._gainNode!;
 
-    // Base ambience: pink noise → bandpass
-    const noise = this.trackSource(createNoiseSource(ctx, 'pink'));
-    const bp = this.trackNode(ctx.createBiquadFilter());
-    bp.type = 'bandpass';
-    bp.frequency.setValueAtTime(400, now);
-    bp.Q.setValueAtTime(0.5, now);
+    // Base ambience: brown noise → lowpass (barely audible forest floor)
+    const baseNoise = this.trackSource(createNoiseSource(ctx, 'brown'));
+    const baseLp = this.trackNode(ctx.createBiquadFilter());
+    baseLp.type = 'lowpass';
+    baseLp.frequency.setValueAtTime(600, now);
+    baseLp.Q.setValueAtTime(0.5, now);
 
     const baseGain = this.trackNode(ctx.createGain());
-    baseGain.gain.setValueAtTime(0.20, now);
+    baseGain.gain.setValueAtTime(0.12, now);
 
-    noise.connect(bp).connect(baseGain).connect(out);
-    noise.start(now);
+    baseNoise.connect(baseLp).connect(baseGain).connect(out);
+    baseNoise.start(now);
 
-    // Wind LFO on filter frequency and gain
+    // Wind layer: pink noise → bandpass with slow LFO
+    const windNoise = this.trackSource(createNoiseSource(ctx, 'pink'));
+    const windBp = this.trackNode(ctx.createBiquadFilter());
+    windBp.type = 'bandpass';
+    windBp.frequency.setValueAtTime(400, now);
+    windBp.Q.setValueAtTime(0.5, now);
+
+    const windGain = this.trackNode(ctx.createGain());
+    windGain.gain.setValueAtTime(0.15, now);
+
+    // Wind LFO modulates both filter frequency and volume
     const windLfo = this.trackOsc(ctx.createOscillator());
     windLfo.type = 'sine';
     windLfo.frequency.setValueAtTime(0.02 + Math.random() * 0.03, now);
 
-    const windFreqGain = this.trackNode(ctx.createGain());
-    windFreqGain.gain.setValueAtTime(600, now);
-    windLfo.connect(windFreqGain).connect(bp.frequency);
+    const windFreqDepth = this.trackNode(ctx.createGain());
+    windFreqDepth.gain.setValueAtTime(500, now);
+    windLfo.connect(windFreqDepth).connect(windBp.frequency);
 
-    const windVolGain = this.trackNode(ctx.createGain());
-    windVolGain.gain.setValueAtTime(0.06, now);
-    windLfo.connect(windVolGain).connect(baseGain.gain);
-
+    const windVolDepth = this.trackNode(ctx.createGain());
+    windVolDepth.gain.setValueAtTime(0.06, now);
+    windLfo.connect(windVolDepth).connect(windGain.gain);
     windLfo.start(now);
+
+    windNoise.connect(windBp).connect(windGain).connect(out);
+    windNoise.start(now);
 
     // Drift wind LFO rate
     this.addInterval(() => {
@@ -469,85 +485,88 @@ class ForestSynth extends BaseSynth {
       windLfo.frequency.setTargetAtTime(0.02 + Math.random() * 0.03, this.ctx.currentTime, 5);
     }, (25 + Math.random() * 20) * 1000);
 
-    // Foliage / leaves layer: brown noise through bandpass 300–800Hz
-    const foliageNoise = this.trackSource(createNoiseSource(ctx, 'brown'));
-    const foliageFilter = this.trackNode(ctx.createBiquadFilter());
-    foliageFilter.type = 'bandpass';
-    foliageFilter.frequency.setValueAtTime(500, now);
-    foliageFilter.Q.setValueAtTime(0.5, now);
-    const foliageGain = this.trackNode(ctx.createGain());
-    foliageGain.gain.setValueAtTime(0.10, now);
-
-    // Slow volume modulation (wind through leaves)
-    const foliageLfo = this.trackOsc(ctx.createOscillator());
-    foliageLfo.type = 'sine';
-    foliageLfo.frequency.setValueAtTime(0.05, now);
-    const foliageLfoGain = this.trackNode(ctx.createGain());
-    foliageLfoGain.gain.setValueAtTime(0.05, now);
-    foliageLfo.connect(foliageLfoGain).connect(foliageGain.gain);
-    foliageLfo.start(now);
-
-    foliageNoise.connect(foliageFilter).connect(foliageGain).connect(out);
-    foliageNoise.start(now);
-
-    // Bird calls
-    this.scheduleBirdCall();
+    // Start multiple bird "species" with staggered timing
+    for (let i = 0; i < this.birdCount; i++) {
+      const initialDelay = (1 + Math.random() * 4) * 1000;
+      this.addTimeout(() => this.scheduleBirdPhrase(i), initialDelay);
+    }
 
     // Foliage rustles
     this.scheduleRustle();
   }
 
-  private scheduleBirdCall(): void {
-    if (!this._active) return;
-    const delay = (4 + Math.random() * 16) * 1000;
+  /**
+   * Schedule a bird phrase: 2–6 individual FM-modulated notes
+   * in quick succession, then silence for 2–8 seconds.
+   */
+  private scheduleBirdPhrase(birdIndex: number): void {
+    if (!this._active || !this.ctx || !this._gainNode) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
 
-    this.addTimeout(() => {
-      if (!this._active || !this.ctx || !this._gainNode) return;
-      const now = this.ctx.currentTime;
+    // Each "bird species" has a unique base pitch range and vibrato character
+    const speciesOffset = birdIndex * 800;
+    const basePitch = 2000 + speciesOffset + Math.random() * 2000;
+    const noteCount = 2 + Math.floor(Math.random() * 5); // 2–6 notes
+    const noteGap = 0.05 + Math.random() * 0.1; // 50–150ms between notes
+    const pitchDirection = Math.random() > 0.5 ? 1 : -1;
+    const pitchStep = 100 + Math.random() * 300;
+    const vibratoRate = 15 + Math.random() * 25; // 15–40Hz FM vibrato
+    const vibratoDepth = 50 + Math.random() * 150; // ±50–200Hz
 
-      const osc = this.trackOsc(this.ctx.createOscillator());
+    // Stereo position (each bird stays in a consistent-ish position)
+    const pan = (birdIndex / this.birdCount) * 1.6 - 0.8 + (Math.random() * 0.3 - 0.15);
+
+    let phraseEnd = now;
+
+    for (let n = 0; n < noteCount; n++) {
+      const noteStart = now + n * (noteGap + 0.03 + Math.random() * 0.07);
+      const notePitch = basePitch + n * pitchDirection * pitchStep * (0.5 + Math.random() * 0.5);
+      const noteDur = 0.03 + Math.random() * 0.07; // 30–100ms per note
+      const noteEnd = noteStart + noteDur;
+
+      // Carrier oscillator
+      const osc = this.trackOsc(ctx.createOscillator());
       osc.type = 'sine';
+      osc.frequency.setValueAtTime(notePitch, noteStart);
 
-      const callType = Math.floor(Math.random() * 3);
-      const baseFreq = 2000 + Math.random() * 4000;
-      const duration = 0.1 + Math.random() * 0.4;
+      // FM vibrato: fast LFO → osc.frequency
+      const vibLfo = this.trackOsc(ctx.createOscillator());
+      vibLfo.type = 'sine';
+      vibLfo.frequency.setValueAtTime(vibratoRate, noteStart);
+      const vibGain = this.trackNode(ctx.createGain());
+      vibGain.gain.setValueAtTime(vibratoDepth, noteStart);
+      vibLfo.connect(vibGain).connect(osc.frequency);
 
-      const gain = this.trackNode(this.ctx.createGain());
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.04 + Math.random() * 0.04, now + 0.02);
+      // Amplitude envelope: quick attack → sustain → quick release
+      const envGain = this.trackNode(ctx.createGain());
+      const attackEnd = noteStart + Math.min(0.01, noteDur * 0.2);
+      const releaseStart = noteEnd - Math.min(0.02, noteDur * 0.3);
+      const vol = 0.04 + Math.random() * 0.04;
 
-      if (callType === 0) {
-        // Short chirp
-        osc.frequency.setValueAtTime(baseFreq, now);
-        osc.frequency.linearRampToValueAtTime(baseFreq * 1.3, now + duration);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-      } else if (callType === 1) {
-        // Descending whistle
-        osc.frequency.setValueAtTime(baseFreq * 1.2, now);
-        osc.frequency.linearRampToValueAtTime(baseFreq * 0.7, now + duration);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-      } else {
-        // Trill
-        const trillCount = 3 + Math.floor(Math.random() * 4);
-        const noteLength = duration / trillCount;
-        for (let i = 0; i < trillCount; i++) {
-          const t = now + i * noteLength;
-          osc.frequency.setValueAtTime(baseFreq * (1 + Math.random() * 0.2), t);
-          gain.gain.setValueAtTime(0.04, t);
-          gain.gain.linearRampToValueAtTime(0.01, t + noteLength * 0.8);
-        }
-        gain.gain.linearRampToValueAtTime(0.0001, now + duration);
-      }
+      envGain.gain.setValueAtTime(0, noteStart);
+      envGain.gain.linearRampToValueAtTime(vol, attackEnd);
+      envGain.gain.setValueAtTime(vol, releaseStart);
+      envGain.gain.linearRampToValueAtTime(0, noteEnd);
 
-      const panner = this.trackNode(this.ctx.createStereoPanner());
-      panner.pan.value = Math.random() * 2 - 1;
+      // Panner
+      const panner = this.trackNode(ctx.createStereoPanner());
+      panner.pan.value = Math.max(-1, Math.min(1, pan));
 
-      osc.connect(gain).connect(panner).connect(this._gainNode!);
-      osc.start(now);
-      osc.stop(now + duration + 0.1);
+      osc.connect(envGain).connect(panner).connect(this._gainNode!);
+      osc.start(noteStart);
+      osc.stop(noteEnd + 0.01);
+      vibLfo.start(noteStart);
+      vibLfo.stop(noteEnd + 0.01);
 
-      this.scheduleBirdCall();
-    }, delay);
+      phraseEnd = noteEnd;
+    }
+
+    // Silence gap before next phrase: 2–8 seconds
+    const silenceGap = (2 + Math.random() * 6) * 1000;
+    const delayFromNow = (phraseEnd - now) * 1000 + silenceGap;
+
+    this.addTimeout(() => this.scheduleBirdPhrase(birdIndex), delayFromNow);
   }
 
   private scheduleRustle(): void {
@@ -583,6 +602,8 @@ class ForestSynth extends BaseSynth {
 }
 
 // ─── Fire ───
+// Architecture: brown noise base rumble + bandpass crackle bursts + sharp pops
+// Overall lowpass at 4kHz removes harshness. Slow breathing LFO on base.
 
 class FireSynth extends BaseSynth {
   start(ctx: AudioContext, destination: AudioNode): void {
@@ -590,106 +611,99 @@ class FireSynth extends BaseSynth {
     const now = ctx.currentTime;
     const out = this._gainNode!;
 
-    // Warm base: brown noise → lowpass (undertone, NOT dominant)
+    // Master shaping: overall lowpass to remove harshness
+    const masterLp = this.trackNode(ctx.createBiquadFilter());
+    masterLp.type = 'lowpass';
+    masterLp.frequency.setValueAtTime(4000, now);
+    masterLp.Q.setValueAtTime(0.7, now);
+    masterLp.connect(out);
+
+    // 1. Base layer — brown noise → lowpass ~400Hz (low rumble/roar)
     const baseNoise = this.trackSource(createNoiseSource(ctx, 'brown'));
-    const lp = this.trackNode(ctx.createBiquadFilter());
-    lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(500, now);
-    lp.Q.setValueAtTime(0.3, now);
+    const baseLp = this.trackNode(ctx.createBiquadFilter());
+    baseLp.type = 'lowpass';
+    baseLp.frequency.setValueAtTime(400, now);
+    baseLp.Q.setValueAtTime(0.7, now);
 
     const baseGain = this.trackNode(ctx.createGain());
-    baseGain.gain.setValueAtTime(0.10, now);
+    baseGain.gain.setValueAtTime(0.25, now);
 
-    // Flickering LFO on base volume
-    const flickerLfo = this.trackOsc(ctx.createOscillator());
-    flickerLfo.type = 'sine';
-    flickerLfo.frequency.setValueAtTime(0.08, now);
-    const flickerGain = this.trackNode(ctx.createGain());
-    flickerGain.gain.setValueAtTime(0.04, now);
-    flickerLfo.connect(flickerGain).connect(baseGain.gain);
-    flickerLfo.start(now);
+    // Breathing LFO on base layer (fire intensity rises and falls)
+    const breathLfo = this.trackOsc(ctx.createOscillator());
+    breathLfo.type = 'sine';
+    breathLfo.frequency.setValueAtTime(0.08, now);
+    const breathDepth = this.trackNode(ctx.createGain());
+    breathDepth.gain.setValueAtTime(0.08, now);
+    breathLfo.connect(breathDepth).connect(baseGain.gain);
+    breathLfo.start(now);
 
-    baseNoise.connect(lp).connect(baseGain).connect(out);
+    baseNoise.connect(baseLp).connect(baseGain).connect(masterLp);
     baseNoise.start(now);
 
-    // Mid-high hiss layer — the "air" of a fire (separates it from brown noise)
-    const hissNoise = this.trackSource(createNoiseSource(ctx, 'white'));
-    const hissFilter = this.trackNode(ctx.createBiquadFilter());
-    hissFilter.type = 'bandpass';
-    hissFilter.frequency.setValueAtTime(3000, now);
-    hissFilter.Q.setValueAtTime(0.3, now);
-    const hissGain = this.trackNode(ctx.createGain());
-    hissGain.gain.setValueAtTime(0.08, now);
-
-    // Slow modulation — fire intensity rises and falls
-    const hissLfo = this.trackOsc(ctx.createOscillator());
-    hissLfo.type = 'sine';
-    hissLfo.frequency.setValueAtTime(0.06, now);
-    const hissLfoGain = this.trackNode(ctx.createGain());
-    hissLfoGain.gain.setValueAtTime(0.03, now);
-    hissLfo.connect(hissLfoGain).connect(hissGain.gain);
-    hissLfo.start(now);
-
-    hissNoise.connect(hissFilter).connect(hissGain).connect(out);
-    hissNoise.start(now);
-
-    // Drift flicker rate
+    // Drift breathing rate over time
     this.addInterval(() => {
       if (!this._active || !this.ctx) return;
-      flickerLfo.frequency.setTargetAtTime(0.04 + Math.random() * 0.06, this.ctx.currentTime, 3);
-    }, (15 + Math.random() * 15) * 1000);
+      breathLfo.frequency.setTargetAtTime(0.05 + Math.random() * 0.15, this.ctx.currentTime, 3);
+    }, (10 + Math.random() * 15) * 1000);
 
-    // Crackle (dominant character of fire)
-    this.scheduleCrackle();
+    // 2. Crackle layer — random short noise bursts through bandpass
+    this.scheduleCrackle(masterLp);
 
-    // Pops (sharp snaps)
-    this.schedulePop();
+    // 3. Pop layer — sharp snaps (less frequent)
+    this.schedulePop(masterLp);
   }
 
-  private scheduleCrackle(): void {
+  private scheduleCrackle(masterDest: AudioNode): void {
     if (!this._active) return;
-    const delay = 80 + Math.random() * 170; // 80–250ms — frequent
+    const delay = 50 + Math.random() * 250; // 50–300ms — frequent
 
     this.addTimeout(() => {
-      if (!this._active || !this.ctx || !this._gainNode) return;
+      if (!this._active || !this.ctx) return;
+      const now = this.ctx.currentTime;
 
-      const bufferSize = 32 + Math.floor(Math.random() * 96); // Short, sharp bursts
+      // Short noise burst (5–30ms worth of samples)
+      const durationMs = 5 + Math.random() * 25;
+      const bufferSize = Math.floor(this.ctx.sampleRate * durationMs / 1000);
       const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < bufferSize; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+        // Exponential decay envelope for click character
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 3);
       }
 
       const source = this.ctx.createBufferSource();
       source.buffer = buffer;
 
-      const filter = this.trackNode(this.ctx.createBiquadFilter());
-      filter.type = 'bandpass';
-      filter.frequency.value = 1500 + Math.random() * 3500; // 1500–5000Hz
-      filter.Q.value = 0.5 + Math.random() * 2;
+      // Bandpass 800–3000Hz
+      const bp = this.trackNode(this.ctx.createBiquadFilter());
+      bp.type = 'bandpass';
+      bp.frequency.value = 800 + Math.random() * 2200;
+      bp.Q.value = 0.8 + Math.random() * 1.5;
 
+      // Randomised amplitude per burst
       const gain = this.trackNode(this.ctx.createGain());
-      gain.gain.value = 0.10 + Math.random() * 0.10; // 0.10–0.20
+      gain.gain.setValueAtTime(0.1 + Math.random() * 0.4, now);
 
       const panner = this.trackNode(this.ctx.createStereoPanner());
-      panner.pan.value = Math.random() * 1.0 - 0.5;
+      panner.pan.value = Math.random() * 0.8 - 0.4;
 
-      source.connect(filter).connect(gain).connect(panner).connect(this._gainNode!);
-      source.start();
+      source.connect(bp).connect(gain).connect(panner).connect(masterDest);
+      source.start(now);
 
-      this.scheduleCrackle();
+      this.scheduleCrackle(masterDest);
     }, delay);
   }
 
-  private schedulePop(): void {
+  private schedulePop(masterDest: AudioNode): void {
     if (!this._active) return;
-    const delay = (2 + Math.random() * 8) * 1000;
+    const delay = (1.5 + Math.random() * 6) * 1000;
 
     this.addTimeout(() => {
-      if (!this._active || !this.ctx || !this._gainNode) return;
+      if (!this._active || !this.ctx) return;
       const now = this.ctx.currentTime;
 
-      const bufferSize = 16 + Math.floor(Math.random() * 16); // Very short snap
+      // Very short snap (2–5ms)
+      const bufferSize = Math.floor(this.ctx.sampleRate * (2 + Math.random() * 3) / 1000);
       const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < bufferSize; i++) {
@@ -699,21 +713,22 @@ class FireSynth extends BaseSynth {
       const source = this.ctx.createBufferSource();
       source.buffer = buffer;
 
+      // Highpass to keep only the sharp snap character
       const hp = this.trackNode(this.ctx.createBiquadFilter());
       hp.type = 'highpass';
-      hp.frequency.value = 2000 + Math.random() * 2000; // 2–4 kHz
+      hp.frequency.value = 2000 + Math.random() * 2000;
 
       const gain = this.trackNode(this.ctx.createGain());
-      gain.gain.setValueAtTime(0.08 + Math.random() * 0.07, now); // 0.08–0.15
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+      gain.gain.setValueAtTime(0.15 + Math.random() * 0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
 
       const panner = this.trackNode(this.ctx.createStereoPanner());
-      panner.pan.value = Math.random() * 0.8 - 0.4;
+      panner.pan.value = Math.random() * 0.6 - 0.3;
 
-      source.connect(hp).connect(gain).connect(panner).connect(this._gainNode!);
+      source.connect(hp).connect(gain).connect(panner).connect(masterDest);
       source.start(now);
 
-      this.schedulePop();
+      this.schedulePop(masterDest);
     }, delay);
   }
 }

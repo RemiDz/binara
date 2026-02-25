@@ -22,6 +22,9 @@ export class AudioEngine {
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
 
+  // Dedicated ambient output — bypasses beat effects chain entirely
+  private ambientMasterGain: GainNode | null = null;
+
   // Listen mode (simple binaural)
   private carrierLeft: OscillatorNode | null = null;
   private carrierRight: OscillatorNode | null = null;
@@ -111,6 +114,11 @@ export class AudioEngine {
 
     this.compressor.connect(this.masterGain);
     this.masterGain.connect(this.ctx.destination);
+
+    // Ambient output: separate gain → destination (bypasses effects chain)
+    this.ambientMasterGain = this.ctx.createGain();
+    this.ambientMasterGain.gain.value = 0.15;
+    this.ambientMasterGain.connect(this.ctx.destination);
 
     this.setupVisibilityHandler();
   }
@@ -320,7 +328,11 @@ export class AudioEngine {
   setMasterVolume(volume: number): void {
     if (!this.ctx || !this.masterGain) return;
     const safeVolume = Math.min(Math.max(volume, 0), VOLUME_HARD_CAP);
-    this.masterGain.gain.setTargetAtTime(safeVolume, this.ctx.currentTime, 0.02);
+    const now = this.ctx.currentTime;
+    this.masterGain.gain.setTargetAtTime(safeVolume, now, 0.02);
+    if (this.ambientMasterGain) {
+      this.ambientMasterGain.gain.setTargetAtTime(safeVolume, now, 0.02);
+    }
   }
 
   setWaveform(waveform: OscillatorType): void {
@@ -333,10 +345,10 @@ export class AudioEngine {
   // ═══════════════════════════════════════════════
 
   startAmbientLayerById(id: string, volume: number): void {
-    if (!this.ctx || !this.compressor) return;
+    if (!this.ctx || !this.ambientMasterGain) return;
     this.stopAmbientLayerById(id);
     const synth = createAmbientSynth(id);
-    synth.start(this.ctx, this.compressor);
+    synth.start(this.ctx, this.ambientMasterGain);
     synth.setVolume(Math.min(volume, 1));
     this.ambientLayers.set(id, synth);
   }
@@ -1059,6 +1071,7 @@ export class AudioEngine {
     if (this._advancedMode) { this.stopAdvancedImmediate(); } else { this.stopImmediate(); }
     if (this.compressor) { this.compressor.disconnect(); this.compressor = null; }
     if (this.masterGain) { this.masterGain.disconnect(); this.masterGain = null; }
+    if (this.ambientMasterGain) { this.ambientMasterGain.disconnect(); this.ambientMasterGain = null; }
     if (this.ctx) { this.ctx.close().catch(() => {}); this.ctx = null; }
   }
 }
