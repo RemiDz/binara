@@ -7,7 +7,11 @@ import { usePreview } from '@/hooks/usePreview';
 import PresetCard from './PresetCard';
 import type { Preset } from '@/types';
 
-export default function PresetGrid() {
+interface PresetGridProps {
+  onSensorBadgeTap?: () => void;
+}
+
+export default function PresetGrid({ onSensorBadgeTap }: PresetGridProps) {
   const { selectedCategory } = useAppState();
   const dispatch = useAppDispatch();
   const presets = getPresetsByCategory(selectedCategory);
@@ -40,6 +44,7 @@ export default function PresetGrid() {
             previewProgress={progress}
             onPreviewToggle={handlePreviewToggle}
             onStopPreview={stopPreview}
+            onSensorBadgeTap={onSensorBadgeTap}
           />
         ))}
       </div>

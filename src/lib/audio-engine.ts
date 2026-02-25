@@ -62,6 +62,11 @@ export class AudioEngine {
   private rotationLfoGain: GainNode | null = null;
   private _stereoWidth = 100;
 
+  // Overtone layer (sensor stillness reward)
+  private overtoneLeft: OscillatorNode | null = null;
+  private overtoneRight: OscillatorNode | null = null;
+  private overtoneGain: GainNode | null = null;
+
   // Preview mode flag
   private _isPreviewMode = false;
 
@@ -282,6 +287,16 @@ export class AudioEngine {
     this.panLeft = null;
     this.panRight = null;
 
+    // Clean up overtone nodes
+    try { this.overtoneLeft?.stop(); } catch { /* */ }
+    try { this.overtoneRight?.stop(); } catch { /* */ }
+    this.overtoneLeft?.disconnect();
+    this.overtoneRight?.disconnect();
+    this.overtoneGain?.disconnect();
+    this.overtoneLeft = null;
+    this.overtoneRight = null;
+    this.overtoneGain = null;
+
     this.stopAllAmbientLayersImmediate();
 
     this._isPlaying = false;
@@ -338,6 +353,94 @@ export class AudioEngine {
   setWaveform(waveform: OscillatorType): void {
     if (this.carrierLeft) this.carrierLeft.type = waveform;
     if (this.carrierRight) this.carrierRight.type = waveform;
+  }
+
+  // ═══════════════════════════════════════════════
+  // SENSOR MODULATION (Listen mode)
+  // ═══════════════════════════════════════════════
+
+  /** Shift stereo balance: -1 (full left) to +1 (full right), 0 = center */
+  setChannelBalance(balance: number): void {
+    if (!this.ctx || !this.gainLeft || !this.gainRight) return;
+    const clamped = Math.max(-1, Math.min(1, balance));
+    // ±3dB shift: when balance > 0, left gets quieter; when < 0, right gets quieter
+    const leftDb = Math.min(0, -clamped * 3);
+    const rightDb = Math.min(0, clamped * 3);
+    const leftGain = 0.5 * Math.pow(10, leftDb / 20);
+    const rightGain = 0.5 * Math.pow(10, rightDb / 20);
+    const now = this.ctx.currentTime;
+    this.gainLeft.gain.setTargetAtTime(leftGain, now, 0.1);
+    this.gainRight.gain.setTargetAtTime(rightGain, now, 0.1);
+  }
+
+  /** Add 2nd-harmonic overtone oscillators as a stillness reward */
+  addOvertoneLayer(): void {
+    if (!this.ctx || !this.compressor || !this.carrierLeft || !this.carrierRight) return;
+    if (this.overtoneGain) return; // already active
+
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    this.overtoneGain = ctx.createGain();
+    this.overtoneGain.gain.value = 0;
+
+    this.overtoneLeft = ctx.createOscillator();
+    this.overtoneLeft.type = 'sine';
+    this.overtoneLeft.frequency.value = this.carrierLeft.frequency.value * 2;
+
+    this.overtoneRight = ctx.createOscillator();
+    this.overtoneRight.type = 'sine';
+    this.overtoneRight.frequency.value = this.carrierRight.frequency.value * 2;
+
+    // Route through the same panner path as carriers
+    if (this.panLeft) {
+      const overtoneGainL = ctx.createGain();
+      overtoneGainL.gain.value = 0.5;
+      this.overtoneLeft.connect(overtoneGainL);
+      overtoneGainL.connect(this.panLeft);
+    }
+    if (this.panRight) {
+      const overtoneGainR = ctx.createGain();
+      overtoneGainR.gain.value = 0.5;
+      this.overtoneRight.connect(overtoneGainR);
+      overtoneGainR.connect(this.panRight);
+    }
+
+    // Also connect through the overtone gain for master volume control
+    this.overtoneLeft.connect(this.overtoneGain);
+    this.overtoneRight.connect(this.overtoneGain);
+    this.overtoneGain.connect(this.compressor);
+
+    this.overtoneLeft.start();
+    this.overtoneRight.start();
+
+    // Slow fade-in
+    this.overtoneGain.gain.setTargetAtTime(0.08, now, 2.0);
+  }
+
+  /** Remove overtone layer with fade-out */
+  removeOvertoneLayer(): void {
+    if (!this.ctx || !this.overtoneGain) return;
+    const now = this.ctx.currentTime;
+
+    this.overtoneGain.gain.cancelScheduledValues(now);
+    this.overtoneGain.gain.setTargetAtTime(0, now, 0.5);
+
+    const oL = this.overtoneLeft;
+    const oR = this.overtoneRight;
+    const oG = this.overtoneGain;
+
+    this.overtoneLeft = null;
+    this.overtoneRight = null;
+    this.overtoneGain = null;
+
+    setTimeout(() => {
+      try { oL?.stop(); } catch { /* */ }
+      try { oR?.stop(); } catch { /* */ }
+      oL?.disconnect();
+      oR?.disconnect();
+      oG?.disconnect();
+    }, 600);
   }
 
   // ═══════════════════════════════════════════════

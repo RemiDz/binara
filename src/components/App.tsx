@@ -3,7 +3,7 @@
 import { useAppState, useAppDispatch } from '@/context/AppContext';
 import { useProContext } from '@/context/ProContext';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
-import { useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'motion/react';
 import Background from './Background';
 import Header from './Header';
@@ -21,6 +21,9 @@ import MixBuilder from './mix/MixBuilder';
 import MixPlayer from './mix/MixPlayer';
 import AdvancedBuilder from './advanced/AdvancedBuilder';
 import AdvancedPlayer from './advanced/AdvancedPlayer';
+import SensorUpsell from './SensorUpsell';
+import ProUpgrade from './ProUpgrade';
+import { SensorEngine } from '@/lib/sensor-engine';
 import { getBrainwaveState } from '@/lib/brainwave-states';
 import { getCarrierTone } from '@/lib/carrier-tones';
 import { buildTimeline, TimelineRunner } from '@/lib/session-timeline';
@@ -38,6 +41,15 @@ export default function App() {
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timelineRunnerRef = useRef<TimelineRunner | null>(null);
   const advancedTimelineRunnerRef = useRef<AdvancedTimelineRunner | null>(null);
+
+  // Sensor modulation state (Listen mode)
+  const [sensorUpsellOpen, setSensorUpsellOpen] = useState(false);
+  const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
+  const [listenSensorActive, setListenSensorActive] = useState(false);
+  const sensorEngineRef = useRef<SensorEngine | null>(null);
+  const sensorRafRef = useRef<number>(0);
+  const overtoneActiveRef = useRef(false);
+  const stillStartRef = useRef<number>(0);
 
   // Check onboarding status on mount
   useEffect(() => {
@@ -146,17 +158,103 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.isPlaying, state.isPaused, state.showMixPlayer]);
 
+  // ─── Listen mode sensor modulation ───
+
+  const stopListenSensors = useCallback(() => {
+    // Cancel rAF loop
+    if (sensorRafRef.current) {
+      cancelAnimationFrame(sensorRafRef.current);
+      sensorRafRef.current = 0;
+    }
+
+    // Stop sensor engine
+    sensorEngineRef.current?.stop();
+
+    // Reset audio modulations
+    audio.setChannelBalance(0);
+    if (state.activePreset) {
+      const base = state.activePreset.carrierFreq;
+      audio.setFrequency(base, base + state.activePreset.beatFreq);
+    }
+    if (overtoneActiveRef.current) {
+      audio.removeOvertoneLayer();
+      overtoneActiveRef.current = false;
+    }
+    stillStartRef.current = 0;
+    setListenSensorActive(false);
+  }, [audio, state.activePreset]);
+
+  const handleListenSensorToggle = useCallback(async () => {
+    if (listenSensorActive) {
+      stopListenSensors();
+      return;
+    }
+
+    // Create/reuse sensor engine
+    if (!sensorEngineRef.current) {
+      sensorEngineRef.current = new SensorEngine();
+    }
+    const engine = sensorEngineRef.current;
+
+    const granted = await engine.requestPermission();
+    if (!granted) return;
+
+    engine.start();
+    setListenSensorActive(true);
+    stillStartRef.current = 0;
+    overtoneActiveRef.current = false;
+
+    // Modulation loop via rAF
+    const loop = () => {
+      const s = engine.getState();
+      if (!s.active) return;
+
+      const preset = state.activePreset;
+      if (!preset) return;
+
+      // 1. Stereo balance from roll (left/right tilt)
+      const balance = Math.max(-1, Math.min(1, s.roll / 45));
+      audio.setChannelBalance(balance);
+
+      // 2. Carrier freq shift from pitch (forward/back tilt)
+      const freqShift = (Math.max(-30, Math.min(30, s.pitch)) / 30) * 5;
+      const base = preset.carrierFreq;
+      audio.setFrequency(base + freqShift, base + preset.beatFreq + freqShift);
+
+      // 3. Stillness → overtone layer
+      if (s.isStill) {
+        if (stillStartRef.current === 0) stillStartRef.current = Date.now();
+        const stillDuration = (Date.now() - stillStartRef.current) / 1000;
+        if (stillDuration > 10 && !overtoneActiveRef.current) {
+          audio.addOvertoneLayer();
+          overtoneActiveRef.current = true;
+        }
+      } else {
+        stillStartRef.current = 0;
+        if (overtoneActiveRef.current) {
+          audio.removeOvertoneLayer();
+          overtoneActiveRef.current = false;
+        }
+      }
+
+      sensorRafRef.current = requestAnimationFrame(loop);
+    };
+
+    sensorRafRef.current = requestAnimationFrame(loop);
+  }, [audio, state.activePreset, listenSensorActive, stopListenSensors]);
+
   // ─── Listen mode handlers ───
 
   const handleSessionComplete = useCallback(async () => {
     trackEvent('Session Complete', { mode: 'easy', duration: state.sessionDuration, preset: state.activePreset?.name ?? '' });
     const count = parseInt(localStorage.getItem('binara_sessions_count') || '0');
     localStorage.setItem('binara_sessions_count', String(count + 1));
+    stopListenSensors();
     audio.stopWithLongFade();
     audio.stopAllAmbientLayers();
     await audio.playCompletionChime();
     dispatch({ type: 'COMPLETE_SESSION' });
-  }, [audio, dispatch, state.sessionDuration, state.activePreset]);
+  }, [audio, dispatch, state.sessionDuration, state.activePreset, stopListenSensors]);
 
   const handlePlay = useCallback(async () => {
     if (!state.activePreset) return;
@@ -179,12 +277,13 @@ export default function App() {
 
   const handleStop = useCallback(() => {
     trackEvent('Session Abandon', { mode: 'easy', elapsed: state.elapsedTime, total: state.sessionDuration * 60 });
+    stopListenSensors();
     audio.stop();
     audio.stopAllAmbientLayers();
     setTimeout(() => {
       dispatch({ type: 'STOP_SESSION' });
     }, 1600);
-  }, [audio, dispatch]);
+  }, [audio, dispatch, stopListenSensors]);
 
   const handlePause = useCallback(async () => {
     await audio.pause();
@@ -465,7 +564,7 @@ export default function App() {
     dispatch({ type: 'SET_TOAST', payload: message });
   }, [dispatch]);
 
-  // ─── Sensor → Audio callbacks ───
+  // ─── Sensor → Audio callbacks (Mix/Advanced) ───
 
   const handleMixSensorFrequencyChange = useCallback((freq: number) => {
     if (!state.mixConfig) return;
@@ -847,6 +946,8 @@ export default function App() {
           onUpdateLayerVolume={handleUpdateLayerVolume}
           onRemoveLayer={handleRemoveLayer}
           onClearAmbient={handleClearAmbient}
+          sensorActive={listenSensorActive}
+          onSensorToggle={handleListenSensorToggle}
         />
       </>
     );
@@ -864,7 +965,7 @@ export default function App() {
           <>
             <CategoryFilter />
             <HeadphoneBanner />
-            <PresetGrid />
+            <PresetGrid onSensorBadgeTap={() => setSensorUpsellOpen(true)} />
           </>
         )}
 
@@ -912,6 +1013,18 @@ export default function App() {
         )}
         <Toast />
         <InstallBanner />
+        <SensorUpsell
+          isOpen={sensorUpsellOpen}
+          onClose={() => setSensorUpsellOpen(false)}
+          onUpgrade={() => {
+            setSensorUpsellOpen(false);
+            setProUpgradeOpen(true);
+          }}
+        />
+        <ProUpgrade
+          isOpen={proUpgradeOpen}
+          onClose={() => setProUpgradeOpen(false)}
+        />
       </div>
     </>
   );

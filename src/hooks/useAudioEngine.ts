@@ -18,6 +18,10 @@ export interface UseAudioEngineReturn {
   resume: () => Promise<void>;
   setVolume: (volume: number) => void;
   setFrequency: (left: number, right: number) => void;
+  // Sensor modulation (Listen mode)
+  setChannelBalance: (balance: number) => void;
+  addOvertoneLayer: () => void;
+  removeOvertoneLayer: () => void;
   // Legacy single-ambient (Easy mode)
   addAmbient: (id: string, volume: number) => Promise<void>;
   removeAmbient: () => void;
@@ -158,6 +162,20 @@ export function useAudioEngine(): UseAudioEngineReturn {
 
   const setFrequency = useCallback((left: number, right: number) => {
     engineRef.current?.setCarrierFrequency(left, right);
+  }, []);
+
+  // ─── Sensor modulation (Listen mode) ───
+
+  const setChannelBalance = useCallback((balance: number) => {
+    engineRef.current?.setChannelBalance(balance);
+  }, []);
+
+  const addOvertoneLayer = useCallback(() => {
+    engineRef.current?.addOvertoneLayer();
+  }, []);
+
+  const removeOvertoneLayer = useCallback(() => {
+    engineRef.current?.removeOvertoneLayer();
   }, []);
 
   // ─── Legacy single-ambient ───
@@ -313,6 +331,7 @@ export function useAudioEngine(): UseAudioEngineReturn {
   return {
     isPlaying, isPaused, isInitialized, currentTime,
     play, stop, stopWithLongFade, pause, resume, setVolume, setFrequency,
+    setChannelBalance, addOvertoneLayer, removeOvertoneLayer,
     addAmbient, removeAmbient, setAmbientVolume,
     addAmbientLayer, removeAmbientLayer, setAmbientLayerVolume, stopAllAmbientLayers,
     previewTone, init, playCompletionChime, getElapsedTime, getEngine,

@@ -5,6 +5,7 @@ import type { Preset } from '@/types';
 import BackgroundVisualiser from './BackgroundVisualiser';
 import SessionTimer from './SessionTimer';
 import VolumeSlider from './VolumeSlider';
+import SensorToggle from './SensorToggle';
 import AmbientSelector from './AmbientSelector';
 import DurationSelector from './DurationSelector';
 import InfoSection from './InfoSection';
@@ -28,6 +29,8 @@ interface PlayerViewProps {
   onUpdateLayerVolume: (id: string, volume: number) => void;
   onRemoveLayer: (id: string) => void;
   onClearAmbient: () => void;
+  sensorActive?: boolean;
+  onSensorToggle?: () => void;
 }
 
 export default function PlayerView({
@@ -49,6 +52,8 @@ export default function PlayerView({
   onUpdateLayerVolume,
   onRemoveLayer,
   onClearAmbient,
+  sensorActive,
+  onSensorToggle,
 }: PlayerViewProps) {
   const playerState = !isPlaying && !isPaused ? 'pre-play' : isPlaying && !isPaused ? 'playing' : 'paused';
 
@@ -122,6 +127,15 @@ export default function PlayerView({
               onChange={onVolumeChange}
               color={preset.color}
               label="Volume"
+            />
+          )}
+
+          {/* Sensor toggle (PRO only, mobile only) */}
+          {(isPlaying || isPaused) && onSensorToggle && (
+            <SensorToggle
+              isActive={sensorActive ?? false}
+              onToggle={onSensorToggle}
+              color={preset.color}
             />
           )}
 
