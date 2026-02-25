@@ -60,25 +60,9 @@ export default function CategoryFilter() {
                   cursor: 'pointer',
                   transition: 'all 0.3s ease',
                   boxShadow: isActive ? 'inset 0 1px 0 rgba(255,255,255,0.06)' : 'none',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 0,
                 }}
               >
-                <span>{cat.label}</span>
-                {isActive && (
-                  <span
-                    style={{
-                      display: 'block',
-                      width: 3,
-                      height: 3,
-                      borderRadius: '50%',
-                      background: 'rgba(247, 183, 49, 0.6)',
-                      marginTop: 4,
-                    }}
-                  />
-                )}
+                {cat.label}
               </button>
             );
           })}
