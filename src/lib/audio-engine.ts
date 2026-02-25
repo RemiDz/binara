@@ -115,6 +115,11 @@ export class AudioEngine {
       this.stopImmediate();
     }
 
+    // Start keepalive and silent audio BEFORE creating oscillators
+    // This activates the browser audio session first
+    this.startKeepAlive();
+    this.startSilentAudioElement();
+
     const ctx = this.ctx!;
     const now = ctx.currentTime;
 
@@ -160,9 +165,6 @@ export class AudioEngine {
     this.pauseOffset = 0;
     this.wallStartTime = Date.now();
     this.wallPauseOffset = 0;
-
-    this.startKeepAlive();
-    this.startSilentAudioElement();
   }
 
   stop(): void {
@@ -492,6 +494,13 @@ export class AudioEngine {
       }
     }
 
+    // Start silent audio element FIRST to activate the browser's audio session
+    // This must happen before creating Web Audio nodes to avoid iOS audio session conflicts
+    this.startSilentAudioElement();
+
+    // Small delay to let the audio session activate
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     // Set up beat layers
     await this.playAdvanced(config.layers);
 
@@ -547,6 +556,11 @@ export class AudioEngine {
       this.stopImmediate();
     }
 
+    // Start keepalive and silent audio BEFORE creating oscillators
+    // This activates the browser audio session first
+    this.startKeepAlive();
+    this.startSilentAudioElement();
+
     const ctx = this.ctx!;
     const now = ctx.currentTime;
 
@@ -567,9 +581,6 @@ export class AudioEngine {
     this.pauseOffset = 0;
     this.wallStartTime = Date.now();
     this.wallPauseOffset = 0;
-
-    this.startKeepAlive();
-    this.startSilentAudioElement();
   }
 
   private createBeatLayerNodes(layer: BeatLayer): void {
