@@ -5,7 +5,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: '/promo',
+      disallow: ['/promo', '/sell'],
     },
     sitemap: 'https://binara.app/sitemap.xml',
   };
