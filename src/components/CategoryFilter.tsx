@@ -4,6 +4,10 @@ import { useAppState, useAppDispatch } from '@/context/AppContext';
 import { CATEGORIES } from '@/lib/constants';
 import type { PresetCategory } from '@/types';
 
+const SHORT_LABELS: Partial<Record<PresetCategory, string>> = {
+  relaxation: 'Relax',
+};
+
 export default function CategoryFilter() {
   const { selectedCategory } = useAppState();
   const dispatch = useAppDispatch();
@@ -14,7 +18,10 @@ export default function CategoryFilter() {
 
   const allCategories: { id: PresetCategory | 'all'; label: string }[] = [
     { id: 'all', label: 'All' },
-    ...CATEGORIES.map((c) => ({ id: c.id, label: c.label })),
+    ...CATEGORIES.map((c) => ({
+      id: c.id,
+      label: SHORT_LABELS[c.id] || c.label,
+    })),
   ];
 
   return (
@@ -23,9 +30,11 @@ export default function CategoryFilter() {
         <div
           className="flex gap-1 overflow-x-auto no-scrollbar"
           style={{
-            padding: 3,
-            borderRadius: 10,
-            background: 'rgba(255,255,255,0.03)',
+            padding: 4,
+            borderRadius: 12,
+            background: 'rgba(255,255,255,0.04)',
+            borderTop: '1px solid rgba(255,255,255,0.04)',
+            borderBottom: '1px solid rgba(255,255,255,0.04)',
           }}
         >
           {allCategories.map((cat) => {
@@ -38,17 +47,38 @@ export default function CategoryFilter() {
                 style={{
                   fontSize: 12,
                   fontWeight: isActive ? 500 : 400,
-                  letterSpacing: '0.03em',
-                  color: isActive ? '#F0EDE6' : 'rgba(255,255,255,0.35)',
-                  background: isActive ? 'rgba(255,255,255,0.08)' : 'transparent',
-                  border: 'none',
-                  borderRadius: 8,
-                  padding: '7px 14px',
+                  letterSpacing: '0.04em',
+                  color: isActive ? 'rgba(240,237,230,0.9)' : 'rgba(255,255,255,0.35)',
+                  background: isActive
+                    ? 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04))'
+                    : 'transparent',
+                  border: isActive
+                    ? '1px solid rgba(255,255,255,0.08)'
+                    : '1px solid transparent',
+                  borderRadius: 10,
+                  padding: '8px 16px',
                   cursor: 'pointer',
                   transition: 'all 0.3s ease',
+                  boxShadow: isActive ? 'inset 0 1px 0 rgba(255,255,255,0.06)' : 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 0,
                 }}
               >
-                {cat.label}
+                <span>{cat.label}</span>
+                {isActive && (
+                  <span
+                    style={{
+                      display: 'block',
+                      width: 3,
+                      height: 3,
+                      borderRadius: '50%',
+                      background: 'rgba(247, 183, 49, 0.6)',
+                      marginTop: 4,
+                    }}
+                  />
+                )}
               </button>
             );
           })}
