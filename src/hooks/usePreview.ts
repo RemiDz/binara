@@ -26,6 +26,7 @@ export function usePreview() {
   const startTimeRef = useRef(0);
 
   const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [previewingPreset, setPreviewingPreset] = useState<Preset | null>(null);
   const [progress, setProgress] = useState(0);
 
   // Ensure AudioContext exists
@@ -71,6 +72,7 @@ export function usePreview() {
 
     sourceRef.current = null;
     setPreviewingId(null);
+    setPreviewingPreset(null);
     setProgress(0);
   }, []);
 
@@ -109,6 +111,7 @@ export function usePreview() {
 
     sourceRef.current = { leftOsc, rightOsc, leftGain, rightGain, merger, masterGain };
     setPreviewingId(preset.id);
+    setPreviewingPreset(preset);
     startTimeRef.current = performance.now();
 
     // Progress animation loop
@@ -138,5 +141,5 @@ export function usePreview() {
     };
   }, [stopPreview]);
 
-  return { previewingId, progress, startPreview, stopPreview };
+  return { previewingId, previewingPreset, progress, startPreview, stopPreview };
 }
