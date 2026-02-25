@@ -1190,11 +1190,12 @@ export class AudioEngine {
 
   private startSilentAudioElement(): void {
     if (this.silentAudio) return;
-    const silentWav = this.createSilentWav();
-    const blob = new Blob([silentWav], { type: 'audio/wav' });
-    const url = URL.createObjectURL(blob);
 
-    this.silentAudio = new Audio(url);
+    // Base64-encoded silent MP3 — registers a native media session with the OS
+    // so it doesn't need to do a cold audio handoff on screen lock
+    this.silentAudio = new Audio(
+      'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRBqpAAAAAAD/+1DEAAAGAAGn9AAAIAAANIAAAAQAAAGkAAAAIAAAAAACEIQhCEIQ7wfB8HwfB8EAQBAEAQBA7+D4Pg+BAEAQBAMf/B8HwfBAEAQBAMf4Pg+D4EAQBBFBwfAgCAIAgCKB3/B8HwIAgCAIBj/4Pg+D4EAQBAEUDv+D4Pg+BAEAQDgA=',
+    );
     this.silentAudio.loop = true;
     this.silentAudio.volume = 0.01;
     this.silentAudio.setAttribute('playsinline', '');
@@ -1202,27 +1203,11 @@ export class AudioEngine {
     this.silentAudio.play().catch(() => {});
   }
 
-  private createSilentWav(): ArrayBuffer {
-    const sampleRate = 8000;
-    const numSamples = sampleRate;
-    const buffer = new ArrayBuffer(44 + numSamples * 2);
-    const view = new DataView(buffer);
-    const ws = (o: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
-    ws(0, 'RIFF'); view.setUint32(4, 36 + numSamples * 2, true); ws(8, 'WAVE'); ws(12, 'fmt ');
-    view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true); view.setUint16(34, 16, true); ws(36, 'data');
-    view.setUint32(40, numSamples * 2, true);
-    return buffer;
-  }
-
   private stopSilentAudioElement(): void {
     if (this.silentAudio) {
       this.silentAudio.pause();
-      const src = this.silentAudio.src;
       this.silentAudio.src = '';
       this.silentAudio = null;
-      URL.revokeObjectURL(src);
     }
   }
 
