@@ -39,6 +39,8 @@ export interface UseAudioEngineReturn {
     onResume?: () => void;
     onStop?: () => void;
   }, artwork?: MediaImage[]) => void;
+  // Diagnostic
+  playTestTone: () => Promise<void>;
   // Preview mode (live audio in builder)
   startPreview: (config: AdvancedSessionConfig) => Promise<void>;
   stopPreview: () => void;
@@ -205,6 +207,13 @@ export function useAudioEngine(): UseAudioEngineReturn {
     return engineRef.current?.getElapsedTime() ?? 0;
   }, []);
 
+  // Diagnostic
+  const playTestTone = useCallback(async () => {
+    const engine = getEngine();
+    if (!engine.isInitialized) await engine.init();
+    await engine.playTestTone();
+  }, [getEngine]);
+
   // ─── Advanced mode wrappers ───
 
   const playAdvanced = useCallback(async (layers: BeatLayer[]) => {
@@ -368,6 +377,8 @@ export function useAudioEngine(): UseAudioEngineReturn {
     getEngine,
     resumeFromBackground,
     setupMediaSession,
+    // Diagnostic
+    playTestTone,
     // Preview mode
     startPreview,
     stopPreview,

@@ -11,6 +11,7 @@ interface PreviewBarProps {
   onDisable: () => void;
   onToggleMute: () => void;
   onVolumeChange: (volume: number) => void;
+  onTestTone?: () => void;
 }
 
 export default function PreviewBar({
@@ -21,23 +22,42 @@ export default function PreviewBar({
   onDisable,
   onToggleMute,
   onVolumeChange,
+  onTestTone,
 }: PreviewBarProps) {
   if (!isActive) {
     return (
-      <button
-        onClick={onEnable}
-        className="w-full mt-3 py-4 rounded-2xl text-sm font-[family-name:var(--font-inter)] font-medium flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
-        style={{
-          background: 'linear-gradient(135deg, rgba(121, 134, 203, 0.12) 0%, rgba(79, 195, 247, 0.08) 100%)',
-          border: '1px dashed rgba(121, 134, 203, 0.3)',
-          color: '#7986cb',
-        }}
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <polygon points="5 3 19 12 5 21 5 3" />
-        </svg>
-        <span>Tap to start playing</span>
-      </button>
+      <div className="flex gap-2 mt-3">
+        <button
+          onClick={onEnable}
+          className="flex-1 py-4 rounded-2xl text-sm font-[family-name:var(--font-inter)] font-medium flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
+          style={{
+            background: 'linear-gradient(135deg, rgba(121, 134, 203, 0.12) 0%, rgba(79, 195, 247, 0.08) 100%)',
+            border: '1px dashed rgba(121, 134, 203, 0.3)',
+            color: '#7986cb',
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+          <span>Tap to start playing</span>
+        </button>
+        {onTestTone && (
+          <button
+            onClick={onTestTone}
+            style={{
+              padding: '4px 12px',
+              background: 'rgba(255,255,255,0.1)',
+              border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: '16px',
+              color: 'white',
+              fontSize: '12px',
+              cursor: 'pointer',
+            }}
+          >
+            {"🔊"} Test
+          </button>
+        )}
+      </div>
     );
   }
 

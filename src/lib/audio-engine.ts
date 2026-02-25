@@ -440,6 +440,37 @@ export class AudioEngine {
     return this._isPreviewMode;
   }
 
+  // Diagnostic: plays a 440Hz tone directly to destination for 1 second
+  // This bypasses the entire audio graph (compressor, masterGain, etc.)
+  async playTestTone(): Promise<void> {
+    if (!this.ctx) await this.init();
+    const ctx = this.ctx!;
+    if (ctx.state !== 'running') {
+      await ctx.resume();
+    }
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 440;
+    gain.gain.value = 0.3;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+
+    console.log('[TEST TONE] Started 440Hz → destination', {
+      ctxState: ctx.state,
+      ctxTime: ctx.currentTime,
+      sampleRate: ctx.sampleRate,
+    });
+
+    setTimeout(() => {
+      osc.stop();
+      osc.disconnect();
+      gain.disconnect();
+      console.log('[TEST TONE] Stopped');
+    }, 1000);
+  }
+
   // ─── Preview mode (live audio in builder) ───
 
   async startPreview(config: AdvancedSessionConfig): Promise<void> {
@@ -520,19 +551,78 @@ export class AudioEngine {
 
     this._isPreviewMode = true;
 
-    // Diagnostic — remove after confirming fix
-    console.log('[Binara Audio Debug]', {
-      ctxState: this.ctx?.state,
-      ctxTime: this.ctx?.currentTime,
+    // ─── DIAGNOSTIC: Analyse the entire audio chain ───
+    const diagCtx = this.ctx!;
+
+    // Check 1: Context state
+    console.log('[DIAG 1/6] AudioContext', {
+      state: diagCtx.state,
+      currentTime: diagCtx.currentTime,
+      sampleRate: diagCtx.sampleRate,
+      baseLatency: diagCtx.baseLatency,
+    });
+
+    // Check 2: Beat layers exist
+    console.log('[DIAG 2/6] Beat Layers', {
+      count: this.beatLayers.size,
+      ids: [...this.beatLayers.keys()],
+      layerData: [...this.beatLayers.entries()].map(([id, s]) => ({
+        id,
+        oscLFreq: s.oscL.frequency.value,
+        oscRFreq: s.oscR.frequency.value,
+        gainLValue: s.gainL.gain.value,
+        gainRValue: s.gainR.gain.value,
+        layerGainValue: s.layerGain.gain.value,
+        panLValue: s.panL.pan.value,
+        panRValue: s.panR.pan.value,
+      })),
+    });
+
+    // Check 3: beatSumGain
+    console.log('[DIAG 3/6] beatSumGain', {
+      exists: !!this.beatSumGain,
+      gainValue: this.beatSumGain?.gain.value,
+    });
+
+    // Check 4: Compressor
+    console.log('[DIAG 4/6] Compressor', {
+      exists: !!this.compressor,
+      threshold: this.compressor?.threshold.value,
+      ratio: this.compressor?.ratio.value,
+      reduction: this.compressor?.reduction,
+    });
+
+    // Check 5: Master gain
+    console.log('[DIAG 5/6] MasterGain', {
+      exists: !!this.masterGain,
+      gainValue: this.masterGain?.gain.value,
+    });
+
+    // Check 6: Flags
+    console.log('[DIAG 6/6] Flags', {
       isPlaying: this._isPlaying,
+      isPaused: this._isPaused,
       advancedMode: this._advancedMode,
       previewMode: this._isPreviewMode,
-      beatLayerCount: this.beatLayers.size,
-      beatSumGainConnected: !!this.beatSumGain,
-      compressorConnected: !!this.compressor,
-      masterGainValue: this.masterGain?.gain.value,
-      masterGainConnected: !!this.masterGain,
+      filterEnabled: this._filterEnabled,
     });
+
+    // Check 7: Quick signal test — inject a KNOWN working tone through the same graph
+    // Create a 2-second 440Hz beep through beatSumGain → compressor → masterGain → dest
+    const testOsc = diagCtx.createOscillator();
+    const testGain = diagCtx.createGain();
+    testOsc.frequency.value = 440;
+    testGain.gain.value = 0.3;
+    testOsc.connect(testGain);
+    testGain.connect(this.beatSumGain!);
+    testOsc.start();
+    console.log('[DIAG 7] Injected 440Hz test tone through beatSumGain');
+    setTimeout(() => {
+      try { testOsc.stop(); } catch {}
+      testOsc.disconnect();
+      testGain.disconnect();
+      console.log('[DIAG 7] Test tone stopped');
+    }, 2000);
   }
 
   stopPreview(): void {

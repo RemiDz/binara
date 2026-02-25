@@ -343,6 +343,7 @@ export default function AdvancedBuilder({
             onDisable={handleDisablePreview}
             onToggleMute={handlePreviewMute}
             onVolumeChange={handlePreviewVolumeChange}
+            onTestTone={() => audio.playTestTone()}
           />
         ) : (
           <div
