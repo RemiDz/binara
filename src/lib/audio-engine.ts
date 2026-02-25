@@ -441,13 +441,9 @@ export class AudioEngine {
   // ─── Preview mode (live audio in builder) ───
 
   async startPreview(config: AdvancedSessionConfig): Promise<void> {
+    // Ensure audio engine is initialised
     if (!this.ctx || !this.compressor) {
       await this.init();
-    }
-
-    // Resume AudioContext if suspended (e.g. after a previous session/pause)
-    if (this.ctx && this.ctx.state === 'suspended') {
-      await this.ctx.resume();
     }
 
     // Cancel any pending stop timeout from a previous stopPreview/stopAdvanced
@@ -456,7 +452,7 @@ export class AudioEngine {
       this.stopTimeout = null;
     }
 
-    // Stop any existing playback cleanly
+    // Stop any existing playback cleanly BEFORE resuming context
     if (this._isPlaying) {
       if (this._advancedMode) {
         this.stopAdvancedImmediate();
@@ -465,7 +461,38 @@ export class AudioEngine {
       }
     }
 
-    // Set up beat layers (same as playAdvanced)
+    // Clear paused flag — crucial if a previous session called pause()
+    this._isPaused = false;
+
+    // Force AudioContext to running state
+    if (this.ctx!.state !== 'running') {
+      try {
+        await this.ctx!.resume();
+      } catch (e) {
+        console.warn('Failed to resume AudioContext:', e);
+      }
+      // Give the context a moment to actually start processing
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    // Double-check context is running
+    if (this.ctx!.state !== 'running') {
+      try {
+        await this.ctx!.resume();
+      } catch { /* ignore */ }
+    }
+
+    // Re-verify masterGain is connected (safety net)
+    if (this.masterGain && this.compressor) {
+      try {
+        this.compressor.connect(this.masterGain);
+        this.masterGain.connect(this.ctx!.destination);
+      } catch {
+        // Already connected — this is fine
+      }
+    }
+
+    // Set up beat layers
     await this.playAdvanced(config.layers);
 
     // Enable subsystems from config
@@ -508,6 +535,14 @@ export class AudioEngine {
     if (!this.ctx || !this.compressor) {
       await this.init();
     }
+
+    // Ensure context is running (may have been suspended)
+    if (this.ctx!.state !== 'running') {
+      try {
+        await this.ctx!.resume();
+      } catch { /* ignore */ }
+    }
+
     if (this._isPlaying) {
       this.stopImmediate();
     }
