@@ -28,7 +28,7 @@ export default function SleepTimer({
   remainingSeconds,
   color,
 }: SleepTimerProps) {
-  const isFading = remainingSeconds !== null && remainingSeconds <= 30 && remainingSeconds > 0; // TODO: REVERT AFTER TESTING — was 180
+  const isFading = remainingSeconds !== null && remainingSeconds <= 180 && remainingSeconds > 0;
 
   return (
     <div className="space-y-2">

@@ -35,9 +35,7 @@ import { VOLUME_HARD_CAP } from '@/lib/constants';
 import { getEaseInStartFreq, getSessionPhaseInfo } from '@/lib/session-phases';
 import type { MixConfig, AdvancedSessionConfig } from '@/types';
 
-// TODO: REVERT AFTER TESTING — should be `minutes * 60` with no override
 function timerToSeconds(minutes: number): number {
-  if (minutes === 15) return 120; // 15m → 2 minutes for testing
   return minutes * 60;
 }
 
@@ -165,7 +163,7 @@ export default function App() {
         const timer = sleepTimerRef.current;
         if (timer !== null) {
           const timerEndSecs = timerToSeconds(timer);
-          const fadeStartSecs = Math.max(0, timerEndSecs - 30); // TODO: REVERT AFTER TESTING — was 180
+          const fadeStartSecs = Math.max(0, timerEndSecs - 180);
 
           if (elapsed >= timerEndSecs) {
             handleSleepTimerComplete();
