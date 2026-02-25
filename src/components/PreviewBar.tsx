@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { WAVE_STATES } from './listen/wave-states';
 import type { Preset } from '@/types';
@@ -22,15 +24,24 @@ export default function PreviewBar({ preset, progress, onStop, bottomOffset = 0 
   const color = waveState.color;
   const remaining = Math.ceil(15 * (1 - progress));
 
-  return (
+  // Portal target — render directly on document.body to guarantee position:fixed works
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setPortalTarget(document.body);
+  }, []);
+
+  const bar = (
     <motion.div
       initial={{ y: 60, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 60, opacity: 0 }}
       transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-      className="fixed left-0 right-0 z-41"
       style={{
+        position: 'fixed',
+        left: 0,
+        right: 0,
         bottom: bottomOffset,
+        zIndex: 50,
         paddingBottom: bottomOffset === 0 ? 'var(--safe-area-bottom)' : 0,
       }}
     >
@@ -111,4 +122,7 @@ export default function PreviewBar({ preset, progress, onStop, bottomOffset = 0 
       </div>
     </motion.div>
   );
+
+  if (!portalTarget) return null;
+  return createPortal(bar, portalTarget);
 }
