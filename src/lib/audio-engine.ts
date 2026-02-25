@@ -83,8 +83,6 @@ export class AudioEngine {
   private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
   private silentAudio: HTMLAudioElement | null = null;
   private _visibilityHandlerSetup = false;
-  private _volumeBeforeHide = 1;
-  private _ambientVolumeBeforeHide = 1;
 
   // Media session callbacks
   private _mediaSessionCallbacks: {
@@ -1112,49 +1110,17 @@ export class AudioEngine {
     this._visibilityHandlerSetup = true;
 
     document.addEventListener('visibilitychange', () => {
-      if (!this._isPlaying || this._isPaused || !this.ctx || !this.masterGain) return;
-
-      const now = this.ctx.currentTime;
+      if (!this._isPlaying || this._isPaused || !this.ctx) return;
 
       if (document.visibilityState === 'hidden') {
-        // Micro-fade to 0 over 50ms to mask any suspend click/crack
-        this._volumeBeforeHide = this.masterGain.gain.value;
-        this.masterGain.gain.setValueAtTime(this._volumeBeforeHide, now);
-        this.masterGain.gain.linearRampToValueAtTime(0, now + 0.05);
-
-        if (this.ambientMasterGain) {
-          this._ambientVolumeBeforeHide = this.ambientMasterGain.gain.value;
-          this.ambientMasterGain.gain.setValueAtTime(this._ambientVolumeBeforeHide, now);
-          this.ambientMasterGain.gain.linearRampToValueAtTime(0, now + 0.05);
-        }
-
-        // Resume AudioContext after brief delay, then fade back up
-        setTimeout(async () => {
-          if (!this.ctx || !this.masterGain) return;
-          if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
-            await this.ctx.resume().catch(() => {});
-          }
-          const resumeNow = this.ctx.currentTime;
-          this.masterGain.gain.setValueAtTime(0, resumeNow);
-          this.masterGain.gain.linearRampToValueAtTime(this._volumeBeforeHide, resumeNow + 0.05);
-
-          if (this.ambientMasterGain) {
-            this.ambientMasterGain.gain.setValueAtTime(0, resumeNow);
-            this.ambientMasterGain.gain.linearRampToValueAtTime(this._ambientVolumeBeforeHide, resumeNow + 0.05);
-          }
-        }, 100);
-
-      } else {
-        // Returning to foreground — ensure audio is at correct volume
+        // Resume AudioContext if the OS suspended it during screen lock
         if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
           this.ctx.resume().catch(() => {});
         }
-        this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-        this.masterGain.gain.linearRampToValueAtTime(this._volumeBeforeHide, now + 0.05);
-
-        if (this.ambientMasterGain) {
-          this.ambientMasterGain.gain.setValueAtTime(this.ambientMasterGain.gain.value, now);
-          this.ambientMasterGain.gain.linearRampToValueAtTime(this._ambientVolumeBeforeHide, now + 0.05);
+      } else {
+        // Returning to foreground — ensure AudioContext is running
+        if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
+          this.ctx.resume().catch(() => {});
         }
       }
     });
