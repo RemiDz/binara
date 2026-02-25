@@ -12,6 +12,7 @@ import AdvancedAmbientPanel from './AdvancedAmbientPanel';
 import AdvancedSummary from './AdvancedSummary';
 import PreviewBar from './PreviewBar';
 import SensorControl from '../SensorControl';
+import AutoMotionControl from '../AutoMotionControl';
 import ExportModal from '../ExportModal';
 import ShareButton from '../ShareButton';
 import BackgroundVisualiser from '../BackgroundVisualiser';
@@ -496,6 +497,11 @@ export default function AdvancedBuilder({
             transition={{ duration: 0.25 }}
           >
             <SensorControl
+              onFrequencyChange={handleSensorFrequencyChange}
+              onStereoWidthChange={handleSensorStereoWidthChange}
+              color="#7986cb"
+            />
+            <AutoMotionControl
               onFrequencyChange={handleSensorFrequencyChange}
               onStereoWidthChange={handleSensorStereoWidthChange}
               color="#7986cb"

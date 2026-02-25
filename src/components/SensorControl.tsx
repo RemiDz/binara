@@ -39,6 +39,8 @@ export default function SensorControl({
       sensors.start();
       setSensorEnabled(true);
       trackEvent('Sensor Enabled');
+      // Notify AutoMotionControl to disable
+      window.dispatchEvent(new CustomEvent('binara:sensor-activated'));
     } else {
       sensors.stop();
       setSensorEnabled(false);
@@ -57,6 +59,18 @@ export default function SensorControl({
       onStereoWidthChange(width * 100);
     }
   }, [sensors.state.pitch, sensors.state.roll, sensors.active, onFrequencyChange, onStereoWidthChange, sensors]);
+
+  // Mutual exclusivity: disable sensors when auto motion activates
+  useEffect(() => {
+    const handler = () => {
+      if (sensorEnabled) {
+        sensors.stop();
+        setSensorEnabled(false);
+      }
+    };
+    window.addEventListener('binara:auto-motion-activated', handler);
+    return () => window.removeEventListener('binara:auto-motion-activated', handler);
+  }, [sensorEnabled, sensors]);
 
   return (
     <div className="space-y-2">

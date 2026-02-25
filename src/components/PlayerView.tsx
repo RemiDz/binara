@@ -6,6 +6,7 @@ import BackgroundVisualiser from './BackgroundVisualiser';
 import SessionTimer from './SessionTimer';
 import VolumeSlider from './VolumeSlider';
 import SensorToggle from './SensorToggle';
+import AutoMotionToggle from './AutoMotionToggle';
 import AmbientSelector from './AmbientSelector';
 import DurationSelector from './DurationSelector';
 import InfoSection from './InfoSection';
@@ -31,6 +32,10 @@ interface PlayerViewProps {
   onClearAmbient: () => void;
   sensorActive?: boolean;
   onSensorToggle?: () => void;
+  autoMotionActive?: boolean;
+  autoMotionIntensity?: number;
+  onAutoMotionToggle?: () => void;
+  onAutoMotionIntensityChange?: (value: number) => void;
 }
 
 export default function PlayerView({
@@ -54,6 +59,10 @@ export default function PlayerView({
   onClearAmbient,
   sensorActive,
   onSensorToggle,
+  autoMotionActive,
+  autoMotionIntensity,
+  onAutoMotionToggle,
+  onAutoMotionIntensityChange,
 }: PlayerViewProps) {
   const playerState = !isPlaying && !isPaused ? 'pre-play' : isPlaying && !isPaused ? 'playing' : 'paused';
 
@@ -135,6 +144,17 @@ export default function PlayerView({
             <SensorToggle
               isActive={sensorActive ?? false}
               onToggle={onSensorToggle}
+              color={preset.color}
+            />
+          )}
+
+          {/* Auto Motion toggle (all users, all platforms) */}
+          {(isPlaying || isPaused) && onAutoMotionToggle && (
+            <AutoMotionToggle
+              isActive={autoMotionActive ?? false}
+              intensity={autoMotionIntensity ?? 50}
+              onToggle={onAutoMotionToggle}
+              onIntensityChange={onAutoMotionIntensityChange ?? (() => {})}
               color={preset.color}
             />
           )}

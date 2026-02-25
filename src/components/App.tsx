@@ -23,6 +23,7 @@ import AdvancedBuilder from './advanced/AdvancedBuilder';
 import AdvancedPlayer from './advanced/AdvancedPlayer';
 import ProUpgrade from './ProUpgrade';
 import { SensorEngine } from '@/lib/sensor-engine';
+import { AutoMotionEngine } from '@/lib/auto-motion-engine';
 import { getBrainwaveState } from '@/lib/brainwave-states';
 import { getCarrierTone } from '@/lib/carrier-tones';
 import { buildTimeline, TimelineRunner } from '@/lib/session-timeline';
@@ -50,6 +51,12 @@ export default function App() {
   const sensorRafRef = useRef<number>(0);
   const overtoneActiveRef = useRef(false);
   const stillStartRef = useRef<number>(0);
+
+  // Auto Motion modulation state (Listen mode)
+  const [listenAutoMotionActive, setListenAutoMotionActive] = useState(false);
+  const autoMotionEngineRef = useRef<AutoMotionEngine | null>(null);
+  const autoMotionRafRef = useRef<number>(0);
+  const [autoMotionIntensity, setAutoMotionIntensity] = useState(50);
 
   // Check onboarding status on mount
   useEffect(() => {
@@ -191,10 +198,83 @@ export default function App() {
     setListenSensorActive(false);
   }, [audio, state.activePreset]);
 
+  // ─── Listen mode auto motion ───
+
+  const stopListenAutoMotion = useCallback(() => {
+    if (autoMotionRafRef.current) {
+      cancelAnimationFrame(autoMotionRafRef.current);
+      autoMotionRafRef.current = 0;
+    }
+    autoMotionEngineRef.current?.stop();
+
+    // Reset audio modulations
+    audio.setChannelBalance(0);
+    if (state.activePreset) {
+      const base = state.activePreset.carrierFreq;
+      audio.setFrequency(base, base + state.activePreset.beatFreq);
+    }
+    setListenAutoMotionActive(false);
+  }, [audio, state.activePreset]);
+
+  const handleListenAutoMotionToggle = useCallback(() => {
+    if (listenAutoMotionActive) {
+      stopListenAutoMotion();
+      return;
+    }
+
+    // Mutual exclusivity: stop sensors if active
+    if (listenSensorActive) {
+      stopListenSensors();
+    }
+
+    // Create/reuse auto motion engine
+    if (!autoMotionEngineRef.current) {
+      autoMotionEngineRef.current = new AutoMotionEngine();
+    }
+    const engine = autoMotionEngineRef.current;
+    engine.setIntensity(autoMotionIntensity);
+    engine.start();
+    setListenAutoMotionActive(true);
+
+    // Modulation loop via rAF
+    const loop = () => {
+      const s = engine.getState();
+      if (!s.active) return;
+
+      const preset = state.activePreset;
+      if (!preset) return;
+
+      // 1. Stereo balance from roll (same formula as sensor loop)
+      const balance = Math.max(-1, Math.min(1, s.roll / 45));
+      audio.setChannelBalance(balance);
+
+      // 2. Carrier freq shift from pitch (same formula as sensor loop)
+      const freqShift = (Math.max(-30, Math.min(30, s.pitch)) / 30) * 5;
+      const base = preset.carrierFreq;
+      audio.setFrequency(base + freqShift, base + preset.beatFreq + freqShift);
+
+      // Deliberately skip stillness/overtone logic (simulation always moves)
+
+      autoMotionRafRef.current = requestAnimationFrame(loop);
+    };
+
+    autoMotionRafRef.current = requestAnimationFrame(loop);
+  }, [audio, state.activePreset, listenAutoMotionActive, listenSensorActive, autoMotionIntensity, stopListenAutoMotion, stopListenSensors]);
+
+  const handleListenAutoMotionIntensityChange = useCallback((value: number) => {
+    setAutoMotionIntensity(value);
+    autoMotionEngineRef.current?.setIntensity(value);
+  }, []);
+
   const handleListenSensorToggle = useCallback(async () => {
     if (listenSensorActive) {
       stopListenSensors();
       return;
+    }
+
+    // Mutual exclusivity: stop auto motion if active
+    if (listenAutoMotionActive) {
+      stopListenAutoMotion();
     }
 
     // Create/reuse sensor engine
@@ -248,7 +328,7 @@ export default function App() {
     };
 
     sensorRafRef.current = requestAnimationFrame(loop);
-  }, [audio, state.activePreset, listenSensorActive, stopListenSensors]);
+  }, [audio, state.activePreset, listenSensorActive, listenAutoMotionActive, stopListenSensors, stopListenAutoMotion]);
 
   // ─── Listen mode handlers ───
 
@@ -257,11 +337,12 @@ export default function App() {
     const count = parseInt(localStorage.getItem('binara_sessions_count') || '0');
     localStorage.setItem('binara_sessions_count', String(count + 1));
     stopListenSensors();
+    stopListenAutoMotion();
     audio.stopWithLongFade();
     audio.stopAllAmbientLayers();
     await audio.playCompletionChime();
     dispatch({ type: 'COMPLETE_SESSION' });
-  }, [audio, dispatch, state.sessionDuration, state.activePreset, stopListenSensors]);
+  }, [audio, dispatch, state.sessionDuration, state.activePreset, stopListenSensors, stopListenAutoMotion]);
 
   const handlePlay = useCallback(async () => {
     if (!state.activePreset) return;
@@ -285,12 +366,13 @@ export default function App() {
   const handleStop = useCallback(() => {
     trackEvent('Session Abandon', { mode: 'easy', elapsed: state.elapsedTime, total: state.sessionDuration * 60 });
     stopListenSensors();
+    stopListenAutoMotion();
     audio.stop();
     audio.stopAllAmbientLayers();
     setTimeout(() => {
       dispatch({ type: 'STOP_SESSION' });
     }, 1600);
-  }, [audio, dispatch, stopListenSensors]);
+  }, [audio, dispatch, stopListenSensors, stopListenAutoMotion]);
 
   const handlePause = useCallback(async () => {
     await audio.pause();
@@ -963,6 +1045,10 @@ export default function App() {
           onClearAmbient={handleClearAmbient}
           sensorActive={listenSensorActive}
           onSensorToggle={handleListenSensorToggle}
+          autoMotionActive={listenAutoMotionActive}
+          autoMotionIntensity={autoMotionIntensity}
+          onAutoMotionToggle={handleListenAutoMotionToggle}
+          onAutoMotionIntensityChange={handleListenAutoMotionIntensityChange}
         />
       </>
     );

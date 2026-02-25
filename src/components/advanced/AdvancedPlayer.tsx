@@ -8,6 +8,7 @@ import BackgroundVisualiser from '../BackgroundVisualiser';
 import SessionTimer from '../SessionTimer';
 import VolumeSlider from '../VolumeSlider';
 import SensorControl from '../SensorControl';
+import AutoMotionControl from '../AutoMotionControl';
 import FaceDownOverlay from '../FaceDownOverlay';
 import ExportModal from '../ExportModal';
 import ShareButton from '../ShareButton';
@@ -254,6 +255,13 @@ export default function AdvancedPlayer({
 
           {/* Sensor control */}
           <SensorControl
+            onFrequencyChange={onSensorFrequencyChange}
+            onStereoWidthChange={onSensorStereoWidthChange}
+            color="#7986cb"
+          />
+
+          {/* Auto Motion control */}
+          <AutoMotionControl
             onFrequencyChange={onSensorFrequencyChange}
             onStereoWidthChange={onSensorStereoWidthChange}
             color="#7986cb"
