@@ -25,6 +25,9 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
   const [stateId, setStateId] = useState('calm-focus');
   // Step 2: Carrier tone
   const [carrierId, setCarrierId] = useState('earth');
+  // Custom frequencies (PRO)
+  const [customCarrierFreq, setCustomCarrierFreq] = useState(200);
+  const [customBeatFreq, setCustomBeatFreq] = useState(10);
   // Step 3: Ambient layers
   const [ambientLayers, setAmbientLayers] = useState<{ id: string; volume: number }[]>([]);
   // Step 4: Timeline
@@ -63,9 +66,11 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
   const buildConfig = useCallback((): MixConfig => ({
     stateId,
     carrierId,
+    ...(carrierId === 'custom' ? { customCarrierFreq } : {}),
+    ...(stateId === 'custom' ? { customBeatFreq } : {}),
     ambientLayers,
     timeline: { easeIn, deep, easeOut },
-  }), [stateId, carrierId, ambientLayers, easeIn, deep, easeOut]);
+  }), [stateId, carrierId, customCarrierFreq, customBeatFreq, ambientLayers, easeIn, deep, easeOut]);
 
   const handleStartSession = useCallback(() => {
     onStartSession(buildConfig());
@@ -78,6 +83,8 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
       createdAt: new Date().toISOString(),
       stateId,
       carrierId,
+      ...(carrierId === 'custom' ? { customCarrierFreq } : {}),
+      ...(stateId === 'custom' ? { customBeatFreq } : {}),
       ambientLayers,
       timeline: { easeIn, deep, easeOut },
     };
@@ -88,7 +95,7 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
     } else {
       onLimitReached(result.error ?? 'Could not save session');
     }
-  }, [stateId, carrierId, ambientLayers, easeIn, deep, easeOut, onLimitReached]);
+  }, [stateId, carrierId, customCarrierFreq, customBeatFreq, ambientLayers, easeIn, deep, easeOut, onLimitReached]);
 
   const handleDelete = useCallback((id: string) => {
     deleteSession(id);
@@ -98,6 +105,8 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
   const handleLoadSession = useCallback((s: SavedSession) => {
     setStateId(s.stateId);
     setCarrierId(s.carrierId);
+    if (s.customCarrierFreq !== undefined) setCustomCarrierFreq(s.customCarrierFreq);
+    if (s.customBeatFreq !== undefined) setCustomBeatFreq(s.customBeatFreq);
     setAmbientLayers(s.ambientLayers);
     setEaseIn(s.timeline.easeIn);
     setDeep(s.timeline.deep);
@@ -108,6 +117,8 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
     const config: MixConfig = {
       stateId: s.stateId,
       carrierId: s.carrierId,
+      ...(s.customCarrierFreq !== undefined ? { customCarrierFreq: s.customCarrierFreq } : {}),
+      ...(s.customBeatFreq !== undefined ? { customBeatFreq: s.customBeatFreq } : {}),
       ambientLayers: s.ambientLayers,
       timeline: s.timeline,
     };
@@ -119,12 +130,8 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
   }, []);
 
   const handleCarrierChange = useCallback((tone: CarrierTone) => {
-    if (tone.proOnly) {
-      onLimitReached('Custom carrier tones require Pro. Coming soon!');
-      return;
-    }
     setCarrierId(tone.id);
-  }, [onLimitReached]);
+  }, []);
 
   const defaultSaveName = generateSessionName(bwState?.label ?? 'Custom');
 
@@ -146,14 +153,20 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
       )}
 
       {/* Step 1: Brainwave State */}
-      <StateSelector selectedId={stateId} onChange={handleStateChange} />
+      <StateSelector
+        selectedId={stateId}
+        customBeatFreq={customBeatFreq}
+        onChange={handleStateChange}
+        onCustomBeatFreqChange={setCustomBeatFreq}
+      />
 
       {/* Step 2: Carrier Tone */}
       <CarrierSelector
         selectedId={carrierId}
+        customFreq={customCarrierFreq}
         onChange={handleCarrierChange}
+        onCustomFreqChange={setCustomCarrierFreq}
         onPreview={onPreviewTone}
-        onProTap={() => onLimitReached('Custom carrier tones require Pro. Coming soon!')}
       />
 
       {/* Step 3: Ambient Layers */}

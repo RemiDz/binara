@@ -381,13 +381,19 @@ export default function App() {
   const handleStartMixSession = useCallback(async (config: MixConfig) => {
     const bwState = getBrainwaveState(config.stateId);
     const carrier = getCarrierTone(config.carrierId);
-    if (!bwState || !carrier) return;
+    if (!bwState && config.stateId !== 'custom') return;
+    if (!carrier && config.carrierId !== 'custom') return;
     trackEvent('Session Start', { mode: 'mix' });
+
+    const carrierFreq = config.carrierId === 'custom' && config.customCarrierFreq
+      ? config.customCarrierFreq : carrier?.frequency ?? 200;
+    const beatFreq = config.stateId === 'custom' && config.customBeatFreq
+      ? config.customBeatFreq : bwState?.beatFreq ?? 10;
 
     // Build timeline
     const timeline = buildTimeline(
-      bwState.beatFreq,
-      carrier.frequency,
+      beatFreq,
+      carrierFreq,
       config.timeline.easeIn,
       config.timeline.deep,
       config.timeline.easeOut,
@@ -396,8 +402,8 @@ export default function App() {
     // Start audio engine with initial freq (10 Hz alpha for ease-in start)
     const startBeatFreq = timeline.phases[0].startBeatFreq;
     await audio.play({
-      carrierFreqLeft: carrier.frequency,
-      carrierFreqRight: carrier.frequency + startBeatFreq,
+      carrierFreqLeft: carrierFreq,
+      carrierFreqRight: carrierFreq + startBeatFreq,
       masterVolume: state.volume / 100 * 0.3,
       waveform: 'sine',
       fadeInDuration: 3,
@@ -576,8 +582,10 @@ export default function App() {
   const handleMixSensorFrequencyChange = useCallback((freq: number) => {
     if (!state.mixConfig) return;
     const carrier = getCarrierTone(state.mixConfig.carrierId);
-    if (!carrier) return;
-    audio.setFrequency(carrier.frequency, carrier.frequency + freq);
+    const carrierFreq = state.mixConfig.carrierId === 'custom' && state.mixConfig.customCarrierFreq
+      ? state.mixConfig.customCarrierFreq : carrier?.frequency;
+    if (!carrierFreq) return;
+    audio.setFrequency(carrierFreq, carrierFreq + freq);
   }, [audio, state.mixConfig]);
 
   const handleAdvancedSensorFrequencyChange = useCallback((freq: number) => {

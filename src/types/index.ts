@@ -59,6 +59,8 @@ export type PlayerState = 'idle' | 'pre-play' | 'playing' | 'paused' | 'complete
 export interface MixConfig {
   stateId: string;
   carrierId: string;
+  customCarrierFreq?: number;
+  customBeatFreq?: number;
   ambientLayers: { id: string; volume: number }[];
   timeline: { easeIn: number; deep: number; easeOut: number };
 }

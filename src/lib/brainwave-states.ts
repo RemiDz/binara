@@ -5,6 +5,7 @@ export interface BrainwaveStateOption {
   beatFreq: number;
   color: string;
   description: string;
+  proOnly?: boolean;
 }
 
 export const BRAINWAVE_STATES: BrainwaveStateOption[] = [
@@ -15,6 +16,7 @@ export const BRAINWAVE_STATES: BrainwaveStateOption[] = [
   { id: 'active-focus', label: 'Active Focus', band: 'Low Beta', beatFreq: 15, color: '#ffab40', description: 'Concentration, problem solving, study' },
   { id: 'performance', label: 'High Performance', band: 'High Beta', beatFreq: 25, color: '#ff7043', description: 'Intense focus, peak mental performance' },
   { id: 'insight', label: 'Insight', band: 'Gamma', beatFreq: 40, color: '#e040fb', description: 'Heightened perception, information processing' },
+  { id: 'custom', label: 'Custom', band: 'Custom', beatFreq: 0, color: '#a0a0a0', description: 'User-defined beat frequency', proOnly: true },
 ];
 
 export function getBrainwaveState(id: string): BrainwaveStateOption | undefined {

@@ -4,6 +4,8 @@ export interface SavedSession {
   createdAt: string;
   stateId: string;
   carrierId: string;
+  customCarrierFreq?: number;
+  customBeatFreq?: number;
   ambientLayers: { id: string; volume: number }[];
   timeline: {
     easeIn: number; // minutes
