@@ -240,10 +240,8 @@ export function useAudioEngine(): UseAudioEngineReturn {
 
   const stopPreview = useCallback(() => {
     engineRef.current?.stopPreview();
-    setTimeout(() => {
-      setIsPlaying(false);
-      setIsPaused(false);
-    }, 2000);
+    setIsPlaying(false);
+    setIsPaused(false);
   }, []);
 
   const isPreviewMode = engineRef.current?.isPreviewMode ?? false;

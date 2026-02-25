@@ -445,7 +445,18 @@ export class AudioEngine {
       await this.init();
     }
 
-    // Stop any existing playback
+    // Resume AudioContext if suspended (e.g. after a previous session/pause)
+    if (this.ctx && this.ctx.state === 'suspended') {
+      await this.ctx.resume();
+    }
+
+    // Cancel any pending stop timeout from a previous stopPreview/stopAdvanced
+    if (this.stopTimeout) {
+      clearTimeout(this.stopTimeout);
+      this.stopTimeout = null;
+    }
+
+    // Stop any existing playback cleanly
     if (this._isPlaying) {
       if (this._advancedMode) {
         this.stopAdvancedImmediate();
