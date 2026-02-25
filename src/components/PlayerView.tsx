@@ -2,7 +2,7 @@
 
 import { motion } from 'motion/react';
 import type { Preset } from '@/types';
-import BeatVisualiser from './BeatVisualiser';
+import BackgroundVisualiser from './BackgroundVisualiser';
 import SessionTimer from './SessionTimer';
 import VolumeSlider from './VolumeSlider';
 import AmbientSelector from './AmbientSelector';
@@ -58,161 +58,158 @@ export default function PlayerView({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
       transition={{ duration: 0.3 }}
-      className="relative z-10 min-h-dvh flex flex-col"
+      className="relative z-10 min-h-dvh flex flex-col overflow-hidden"
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3" style={{ paddingTop: 'calc(var(--safe-area-top) + 12px)' }}>
-        <button
-          onClick={onBack}
-          className="w-10 h-10 flex items-center justify-center rounded-full glass-hover transition-colors"
-          style={{ color: 'var(--text-secondary)' }}
-          aria-label="Back"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 19l-7-7 7-7" />
-          </svg>
-        </button>
-      </div>
+      {/* Background visualiser */}
+      <BackgroundVisualiser
+        beatFrequency={preset.beatFreq}
+        isPlaying={isPlaying && !isPaused}
+        color={preset.color}
+      />
 
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-6">
-        {/* Visualiser */}
-        <BeatVisualiser
-          beatFrequency={preset.beatFreq}
-          color={preset.color}
-          isPlaying={isPlaying}
-        />
-
-        {/* Preset info */}
-        <div className="text-center space-y-1">
-          <h2
-            className="font-[family-name:var(--font-playfair)] text-2xl"
-            style={{ color: 'var(--text-primary)' }}
-          >
-            {preset.name}
-          </h2>
-          <p
-            className="font-[family-name:var(--font-jetbrains)] text-xs"
-            style={{ color: preset.color }}
-          >
-            {preset.brainwaveLabel}
-          </p>
-          <p
-            className="font-[family-name:var(--font-inter)] text-sm pt-1"
+      {/* Content layer */}
+      <div className="relative z-[1] flex flex-col min-h-dvh">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3" style={{ paddingTop: 'calc(var(--safe-area-top) + 12px)' }}>
+          <button
+            onClick={onBack}
+            className="w-10 h-10 flex items-center justify-center rounded-full glass-hover transition-colors"
             style={{ color: 'var(--text-secondary)' }}
+            aria-label="Back"
           >
-            {preset.description}
-          </p>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+          </button>
         </div>
 
-        {/* Timer (when playing) */}
-        {isPlaying && (
-          <SessionTimer
-            elapsedTime={elapsedTime}
-            sessionDuration={sessionDuration}
-            color={preset.color}
-          />
-        )}
-
-        {/* Duration selector (pre-play only) */}
-        {playerState === 'pre-play' && (
-          <DurationSelector value={sessionDuration} onChange={onDurationChange} />
-        )}
-
-        {/* Volume */}
-        {(isPlaying || isPaused) && (
-          <VolumeSlider
-            value={volume}
-            onChange={onVolumeChange}
-            color={preset.color}
-            label="Volume"
-          />
-        )}
-
-        {/* Ambient */}
-        {(isPlaying || isPaused) && (
-          <AmbientSelector
-            ambientLayers={ambientLayers}
-            onToggleAmbient={onToggleAmbient}
-            onUpdateLayerVolume={onUpdateLayerVolume}
-            onRemoveLayer={onRemoveLayer}
-            onClearAmbient={onClearAmbient}
-          />
-        )}
-
-        {/* Controls */}
-        <div className="flex flex-col gap-3 items-center">
-          {playerState === 'pre-play' && (
-            <button
-              onClick={onPlay}
-              className="w-full max-w-xs py-3 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
-              style={{
-                background: `${preset.color}25`,
-                border: `1px solid ${preset.color}50`,
-                color: preset.color,
-              }}
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-4">
+          {/* Session info */}
+          <div className="text-center space-y-0.5">
+            <h2
+              className="font-[family-name:var(--font-playfair)] text-xl"
+              style={{ color: 'var(--text-primary)' }}
             >
-              {"▶ Start Session"}
-            </button>
+              {preset.name}
+            </h2>
+            <p
+              className="font-[family-name:var(--font-jetbrains)] text-[11px]"
+              style={{ color: preset.color }}
+            >
+              {preset.brainwaveLabel} {"·"} {preset.beatFreq} Hz
+            </p>
+          </div>
+
+          {/* Timer (when playing) */}
+          {isPlaying && (
+            <SessionTimer
+              elapsedTime={elapsedTime}
+              sessionDuration={sessionDuration}
+              color={preset.color}
+            />
           )}
 
-          {playerState === 'playing' && (
-            <>
+          {/* Duration selector (pre-play only) */}
+          {playerState === 'pre-play' && (
+            <DurationSelector value={sessionDuration} onChange={onDurationChange} />
+          )}
+
+          {/* Volume */}
+          {(isPlaying || isPaused) && (
+            <VolumeSlider
+              value={volume}
+              onChange={onVolumeChange}
+              color={preset.color}
+              label="Volume"
+            />
+          )}
+
+          {/* Ambient */}
+          {(isPlaying || isPaused) && (
+            <AmbientSelector
+              ambientLayers={ambientLayers}
+              onToggleAmbient={onToggleAmbient}
+              onUpdateLayerVolume={onUpdateLayerVolume}
+              onRemoveLayer={onRemoveLayer}
+              onClearAmbient={onClearAmbient}
+            />
+          )}
+
+          {/* Controls */}
+          <div className="flex flex-col gap-2 items-center">
+            {playerState === 'pre-play' && (
               <button
-                onClick={onPause}
+                onClick={onPlay}
                 className="w-full max-w-xs py-3 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
                 style={{
-                  background: `${preset.color}20`,
-                  border: `1px solid ${preset.color}40`,
+                  background: `${preset.color}25`,
+                  border: `1px solid ${preset.color}50`,
                   color: preset.color,
                 }}
               >
-                {"⏸ Pause"}
+                {"▶ Start Session"}
               </button>
-              <button
-                onClick={onStop}
-                className="w-full max-w-xs py-2.5 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
-                style={{
-                  background: 'var(--glass-bg)',
-                  border: '1px solid var(--glass-border)',
-                  color: 'var(--text-secondary)',
-                }}
-              >
-                {"⏹ Stop"}
-              </button>
-            </>
-          )}
+            )}
 
-          {playerState === 'paused' && (
-            <>
-              <button
-                onClick={onResume}
-                className="w-full max-w-xs py-3 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
-                style={{
-                  background: `${preset.color}20`,
-                  border: `1px solid ${preset.color}40`,
-                  color: preset.color,
-                }}
-              >
-                {"▶ Resume"}
-              </button>
-              <button
-                onClick={onStop}
-                className="w-full max-w-xs py-2.5 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
-                style={{
-                  background: 'var(--glass-bg)',
-                  border: '1px solid var(--glass-border)',
-                  color: 'var(--text-secondary)',
-                }}
-              >
-                {"⏹ Stop"}
-              </button>
-            </>
-          )}
+            {playerState === 'playing' && (
+              <>
+                <button
+                  onClick={onPause}
+                  className="w-full max-w-xs py-3 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
+                  style={{
+                    background: `${preset.color}20`,
+                    border: `1px solid ${preset.color}40`,
+                    color: preset.color,
+                  }}
+                >
+                  {"⏸ Pause"}
+                </button>
+                <button
+                  onClick={onStop}
+                  className="w-full max-w-xs py-2.5 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
+                  style={{
+                    background: 'var(--glass-bg)',
+                    border: '1px solid var(--glass-border)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  {"⏹ Stop"}
+                </button>
+              </>
+            )}
+
+            {playerState === 'paused' && (
+              <>
+                <button
+                  onClick={onResume}
+                  className="w-full max-w-xs py-3 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
+                  style={{
+                    background: `${preset.color}20`,
+                    border: `1px solid ${preset.color}40`,
+                    color: preset.color,
+                  }}
+                >
+                  {"▶ Resume"}
+                </button>
+                <button
+                  onClick={onStop}
+                  className="w-full max-w-xs py-2.5 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
+                  style={{
+                    background: 'var(--glass-bg)',
+                    border: '1px solid var(--glass-border)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  {"⏹ Stop"}
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Info section */}
+          <InfoSection preset={preset} />
         </div>
-
-        {/* Info section */}
-        <InfoSection preset={preset} />
       </div>
     </motion.div>
   );

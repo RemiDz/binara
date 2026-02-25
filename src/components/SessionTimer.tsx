@@ -16,8 +16,8 @@ export default function SessionTimer({ elapsedTime, sessionDuration, color }: Se
   const totalSeconds = sessionDuration * 60;
   const progress = Math.min(elapsedTime / totalSeconds, 1);
 
-  const size = 120;
-  const strokeWidth = 3;
+  const size = 96;
+  const strokeWidth = 2;
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const offset = circumference - progress * circumference;
@@ -46,14 +46,17 @@ export default function SessionTimer({ elapsedTime, sessionDuration, color }: Se
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={offset}
-            style={{ transition: 'stroke-dashoffset 1s linear' }}
+            style={{
+              transition: 'stroke-dashoffset 1s linear',
+              filter: `drop-shadow(0 0 4px ${color}60)`,
+            }}
             opacity={0.8}
           />
         </svg>
         {/* Time display */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span
-            className="font-[family-name:var(--font-jetbrains)] text-sm"
+            className="font-[family-name:var(--font-jetbrains)] text-base"
             style={{ color: 'var(--text-primary)' }}
           >
             {formatTime(elapsedTime)}
