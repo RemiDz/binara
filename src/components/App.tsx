@@ -35,6 +35,12 @@ import { VOLUME_HARD_CAP } from '@/lib/constants';
 import { getEaseInStartFreq, getSessionPhaseInfo } from '@/lib/session-phases';
 import type { MixConfig, AdvancedSessionConfig } from '@/types';
 
+// TODO: REVERT AFTER TESTING — should be `minutes * 60` with no override
+function timerToSeconds(minutes: number): number {
+  if (minutes === 15) return 120; // 15m → 2 minutes for testing
+  return minutes * 60;
+}
+
 export default function App() {
   const state = useAppState();
   const dispatch = useAppDispatch();
@@ -158,8 +164,8 @@ export default function App() {
         // Sleep timer check (takes priority over normal completion)
         const timer = sleepTimerRef.current;
         if (timer !== null) {
-          const timerEndSecs = timer * 60;
-          const fadeStartSecs = Math.max(0, timerEndSecs - 180);
+          const timerEndSecs = timerToSeconds(timer);
+          const fadeStartSecs = Math.max(0, timerEndSecs - 30); // TODO: REVERT AFTER TESTING — was 180
 
           if (elapsed >= timerEndSecs) {
             handleSleepTimerComplete();
@@ -190,7 +196,7 @@ export default function App() {
         const preset = state.activePreset;
         if (preset) {
           const timerVal = sleepTimerRef.current;
-          const effectiveSecs = (timerVal !== null ? timerVal : state.sessionDuration) * 60;
+          const effectiveSecs = timerVal !== null ? timerToSeconds(timerVal) : state.sessionDuration * 60;
           const isSleep = preset.category === 'sleep';
           const startFreq = getEaseInStartFreq(preset.brainwaveState);
 
@@ -1217,7 +1223,7 @@ export default function App() {
           onSleepTimerChange={handleSleepTimerChange}
           sleepTimerRemaining={
             sleepTimer !== null && state.isPlaying
-              ? Math.max(0, sleepTimer * 60 - state.elapsedTime)
+              ? Math.max(0, timerToSeconds(sleepTimer) - state.elapsedTime)
               : null
           }
           listenPhase={listenPhase}
