@@ -18,6 +18,7 @@
   --font-playfair: var(--font-playfair);
   --font-inter: var(--font-inter);
   --font-jetbrains: var(--font-jetbrains);
+  --font-cormorant: var(--font-cormorant);
 }
 
 :root {
@@ -119,6 +120,18 @@ input[type="range"]::-moz-range-thumb {
   border: none;
   background: var(--color-pulse-cyan, #4fc3f7);
   box-shadow: 0 0 10px rgba(79, 195, 247, 0.4);
+}
+
+/* Card reveal animation */
+@keyframes cardReveal {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Reduced motion */

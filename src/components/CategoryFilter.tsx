@@ -12,30 +12,43 @@ export default function CategoryFilter() {
     dispatch({ type: 'SET_SELECTED_CATEGORY', payload: category });
   };
 
-  const allCategories: { id: PresetCategory | 'all'; label: string; icon?: string }[] = [
+  const allCategories: { id: PresetCategory | 'all'; label: string }[] = [
     { id: 'all', label: 'All' },
-    ...CATEGORIES,
+    ...CATEGORIES.map((c) => ({ id: c.id, label: c.label })),
   ];
 
   return (
     <div className="px-4 py-3">
       <div className="max-w-5xl mx-auto">
-        <div className="flex gap-2 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-1">
+        <div
+          className="flex gap-1 overflow-x-auto no-scrollbar"
+          style={{
+            padding: 3,
+            borderRadius: 10,
+            background: 'rgba(255,255,255,0.03)',
+          }}
+        >
           {allCategories.map((cat) => {
             const isActive = selectedCategory === cat.id;
             return (
               <button
                 key={cat.id}
                 onClick={() => handleSelect(cat.id)}
-                className="flex-shrink-0 snap-start flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-[family-name:var(--font-inter)] font-medium transition-all whitespace-nowrap"
+                className="flex-shrink-0 font-[family-name:var(--font-inter)] whitespace-nowrap"
                 style={{
-                  background: isActive ? 'rgba(79, 195, 247, 0.1)' : 'var(--glass-bg)',
-                  border: `1px solid ${isActive ? 'rgba(79, 195, 247, 0.3)' : 'var(--glass-border)'}`,
-                  color: isActive ? '#4fc3f7' : 'var(--text-secondary)',
+                  fontSize: 12,
+                  fontWeight: isActive ? 500 : 400,
+                  letterSpacing: '0.03em',
+                  color: isActive ? '#F0EDE6' : 'rgba(255,255,255,0.35)',
+                  background: isActive ? 'rgba(255,255,255,0.08)' : 'transparent',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '7px 14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
                 }}
               >
-                {cat.icon && <span>{cat.icon}</span>}
-                <span>{cat.label}</span>
+                {cat.label}
               </button>
             );
           })}

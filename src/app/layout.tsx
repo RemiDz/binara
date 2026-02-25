@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
-import { Playfair_Display, Inter, JetBrains_Mono } from "next/font/google";
+import { Playfair_Display, Inter, JetBrains_Mono, Cormorant_Garamond } from "next/font/google";
 import { AppProvider } from "@/context/AppContext";
 import { ProProvider } from "@/context/ProContext";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
@@ -24,6 +24,14 @@ const jetbrains = JetBrains_Mono({
   variable: "--font-jetbrains",
   subsets: ["latin"],
   weight: ["400", "500"],
+  display: "swap",
+});
+
+const cormorant = Cormorant_Garamond({
+  variable: "--font-cormorant",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  style: ["normal", "italic"],
   display: "swap",
 });
 
@@ -134,7 +142,7 @@ export default function RootLayout({
         </Script>
       </head>
       <body
-        className={`${playfair.variable} ${inter.variable} ${jetbrains.variable} antialiased`}
+        className={`${playfair.variable} ${inter.variable} ${jetbrains.variable} ${cormorant.variable} antialiased`}
       >
         <ProProvider>
           <AppProvider>
