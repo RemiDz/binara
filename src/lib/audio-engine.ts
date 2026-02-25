@@ -2,6 +2,8 @@ import type { AudioEngineConfig, AmbientLayerConfig, BeatLayer, FilterConfig, LF
 import { VOLUME_HARD_CAP } from './constants';
 import { createAmbientSynth, type AmbientSynth } from './ambient-synth';
 
+// ─── Types ───
+
 interface BeatLayerAudioState {
   oscL: OscillatorNode;
   oscR: OscillatorNode;
@@ -12,49 +14,30 @@ interface BeatLayerAudioState {
   layerGain: GainNode;
 }
 
+// ─── Audio Engine ───
+
 export class AudioEngine {
+  // Core audio graph (created once in init, never destroyed until destroy())
   private ctx: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
+  private compressor: DynamicsCompressorNode | null = null;
+
+  // Listen mode (simple binaural)
   private carrierLeft: OscillatorNode | null = null;
   private carrierRight: OscillatorNode | null = null;
   private gainLeft: GainNode | null = null;
   private gainRight: GainNode | null = null;
   private panLeft: StereoPannerNode | null = null;
   private panRight: StereoPannerNode | null = null;
-  private masterGain: GainNode | null = null;
-  private compressor: DynamicsCompressorNode | null = null;
 
-  // Multi-ambient support (procedural synth instances)
-  private ambientLayers: Map<string, AmbientSynth> = new Map();
-
-  // Legacy single-ambient (Phase 1 compat)
-  private _legacyAmbientId: string | null = null;
-
-  private _isPlaying = false;
-  private _isPaused = false;
-  private startTime = 0;
-  private pauseOffset = 0;
-  private stopTimeout: ReturnType<typeof setTimeout> | null = null;
-
-  // Wall-clock timing (survives AudioContext suspension)
-  private wallStartTime = 0;
-  private wallPauseOffset = 0;
-
-  // Background audio support
-  private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
-  private silentAudio: HTMLAudioElement | null = null;
-  private _visibilityHandlerSetup = false;
-
-  // Media session callbacks (set by consumer)
-  private _mediaSessionCallbacks: {
-    onPause?: () => void;
-    onResume?: () => void;
-    onStop?: () => void;
-  } = {};
-
-  // ─── Advanced mode state ───
+  // Advanced mode (multi-layer binaural)
   private _advancedMode = false;
   private beatLayers: Map<string, BeatLayerAudioState> = new Map();
   private beatSumGain: GainNode | null = null;
+
+  // Ambient layers
+  private ambientLayers: Map<string, AmbientSynth> = new Map();
+  private _legacyAmbientId: string | null = null;
 
   // Filter subsystem
   private filterNode: BiquadFilterNode | null = null;
@@ -70,32 +53,61 @@ export class AudioEngine {
   private isoPulseTimer: ReturnType<typeof setInterval> | null = null;
   private nextPulseTime = 0;
 
-  // Preview mode (live audio in builder)
-  private _isPreviewMode = false;
-
   // Stereo subsystem
   private masterPan: StereoPannerNode | null = null;
   private rotationLfo: OscillatorNode | null = null;
   private rotationLfoGain: GainNode | null = null;
   private _stereoWidth = 100;
 
+  // Preview mode flag
+  private _isPreviewMode = false;
+
+  // Playback state
+  private _isPlaying = false;
+  private _isPaused = false;
+  private startTime = 0;
+  private pauseOffset = 0;
+  private wallStartTime = 0;
+  private wallPauseOffset = 0;
+  private stopTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  // Background audio support
+  private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
+  private silentAudio: HTMLAudioElement | null = null;
+  private _visibilityHandlerSetup = false;
+
+  // Media session callbacks
+  private _mediaSessionCallbacks: {
+    onPause?: () => void;
+    onResume?: () => void;
+    onStop?: () => void;
+  } = {};
+
+  // ═══════════════════════════════════════════════
+  // INITIALISATION
+  // ═══════════════════════════════════════════════
+
   async init(): Promise<void> {
     if (this.ctx) return;
+
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     this.ctx = new AudioCtx();
+
     if (this.ctx.state === 'suspended') {
       await this.ctx.resume();
     }
 
+    // Build master output chain: compressor → masterGain → destination
+    // Use direct .value assignment — no scheduling, no timing dependency
     this.compressor = this.ctx.createDynamicsCompressor();
-    this.compressor.threshold.setValueAtTime(-6, this.ctx.currentTime);
-    this.compressor.knee.setValueAtTime(30, this.ctx.currentTime);
-    this.compressor.ratio.setValueAtTime(12, this.ctx.currentTime);
-    this.compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
-    this.compressor.release.setValueAtTime(0.25, this.ctx.currentTime);
+    this.compressor.threshold.value = -6;
+    this.compressor.knee.value = 30;
+    this.compressor.ratio.value = 12;
+    this.compressor.attack.value = 0.003;
+    this.compressor.release.value = 0.25;
 
     this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+    this.masterGain.gain.value = 0.15;
 
     this.compressor.connect(this.masterGain);
     this.masterGain.connect(this.ctx.destination);
@@ -107,31 +119,58 @@ export class AudioEngine {
     return this.ctx !== null;
   }
 
-  async play(config: AudioEngineConfig): Promise<void> {
+  /** Ensure AudioContext exists and is running. */
+  private async ensureRunning(): Promise<void> {
     if (!this.ctx || !this.compressor) {
       await this.init();
     }
-    if (this._isPlaying) {
-      this.stopImmediate();
+    if (this.ctx!.state !== 'running') {
+      await this.ctx!.resume();
+    }
+  }
+
+  /**
+   * Ensure compressor → masterGain → destination is connected.
+   * Handles the case where masterPan was inserted or removed.
+   */
+  private reconnectMasterChain(): void {
+    if (!this.compressor || !this.masterGain || !this.ctx) return;
+
+    // Disconnect compressor from whatever it's currently connected to
+    try { this.compressor.disconnect(); } catch { /* nothing connected */ }
+
+    if (this.masterPan) {
+      this.compressor.connect(this.masterPan);
+      try { this.masterPan.disconnect(); } catch { /* nothing connected */ }
+      this.masterPan.connect(this.masterGain);
+    } else {
+      this.compressor.connect(this.masterGain);
     }
 
-    // Start keepalive and silent audio BEFORE creating oscillators
-    // This activates the browser audio session first
-    this.startKeepAlive();
-    this.startSilentAudioElement();
+    try { this.masterGain.disconnect(); } catch { /* nothing connected */ }
+    this.masterGain.connect(this.ctx.destination);
+  }
+
+  // ═══════════════════════════════════════════════
+  // LISTEN MODE (simple binaural — Easy/Listen tabs)
+  // ═══════════════════════════════════════════════
+
+  async play(config: AudioEngineConfig): Promise<void> {
+    await this.ensureRunning();
+
+    if (this._isPlaying) this.stopImmediate();
 
     const ctx = this.ctx!;
-    const now = ctx.currentTime;
 
     this.carrierLeft = ctx.createOscillator();
     this.carrierLeft.type = config.waveform;
-    this.carrierLeft.frequency.setValueAtTime(config.carrierFreqLeft, now);
+    this.carrierLeft.frequency.value = config.carrierFreqLeft;
 
     this.gainLeft = ctx.createGain();
-    this.gainLeft.gain.setValueAtTime(0, now);
+    this.gainLeft.gain.value = 0;
 
     this.panLeft = ctx.createStereoPanner();
-    this.panLeft.pan.setValueAtTime(-1, now);
+    this.panLeft.pan.value = -1;
 
     this.carrierLeft.connect(this.gainLeft);
     this.gainLeft.connect(this.panLeft);
@@ -139,25 +178,26 @@ export class AudioEngine {
 
     this.carrierRight = ctx.createOscillator();
     this.carrierRight.type = config.waveform;
-    this.carrierRight.frequency.setValueAtTime(config.carrierFreqRight, now);
+    this.carrierRight.frequency.value = config.carrierFreqRight;
 
     this.gainRight = ctx.createGain();
-    this.gainRight.gain.setValueAtTime(0, now);
+    this.gainRight.gain.value = 0;
 
     this.panRight = ctx.createStereoPanner();
-    this.panRight.pan.setValueAtTime(1, now);
+    this.panRight.pan.value = 1;
 
     this.carrierRight.connect(this.gainRight);
     this.gainRight.connect(this.panRight);
     this.panRight.connect(this.compressor!);
 
-    const targetGain = 0.5;
-    const fadeIn = config.fadeInDuration;
-    this.gainLeft.gain.linearRampToValueAtTime(targetGain, now + fadeIn);
-    this.gainRight.gain.linearRampToValueAtTime(targetGain, now + fadeIn);
+    // Fade in using setTargetAtTime (timing-resilient)
+    const now = ctx.currentTime;
+    const tau = config.fadeInDuration / 5;
+    this.gainLeft.gain.setTargetAtTime(0.5, now, tau);
+    this.gainRight.gain.setTargetAtTime(0.5, now, tau);
 
-    this.carrierLeft.start(now);
-    this.carrierRight.start(now);
+    this.carrierLeft.start();
+    this.carrierRight.start();
 
     this._isPlaying = true;
     this._isPaused = false;
@@ -165,45 +205,40 @@ export class AudioEngine {
     this.pauseOffset = 0;
     this.wallStartTime = Date.now();
     this.wallPauseOffset = 0;
+
+    this.startKeepAlive();
+    this.startSilentAudioElement();
   }
 
   stop(): void {
     if (!this._isPlaying || !this.ctx) return;
     const now = this.ctx.currentTime;
-    const fadeOut = 1.5;
-    const tau = fadeOut / 5;
+    const tau = 0.3;
 
     this.fadeOutCarriers(now, tau);
     this.fadeOutAllAmbient(now, tau);
 
-    this.stopTimeout = setTimeout(() => {
-      this.stopImmediate();
-    }, fadeOut * 1000 + 100);
+    this.stopTimeout = setTimeout(() => this.stopImmediate(), 1600);
   }
 
   stopWithLongFade(): void {
     if (!this._isPlaying || !this.ctx) return;
     const now = this.ctx.currentTime;
-    const fadeOut = 3;
-    const tau = fadeOut / 5;
+    const tau = 0.6;
 
     this.fadeOutCarriers(now, tau);
     this.fadeOutAllAmbient(now, tau);
 
-    this.stopTimeout = setTimeout(() => {
-      this.stopImmediate();
-    }, fadeOut * 1000 + 100);
+    this.stopTimeout = setTimeout(() => this.stopImmediate(), 3200);
   }
 
   private fadeOutCarriers(now: number, tau: number): void {
     if (this.gainLeft) {
       this.gainLeft.gain.cancelScheduledValues(now);
-      this.gainLeft.gain.setValueAtTime(this.gainLeft.gain.value, now);
       this.gainLeft.gain.setTargetAtTime(0, now, tau);
     }
     if (this.gainRight) {
       this.gainRight.gain.cancelScheduledValues(now);
-      this.gainRight.gain.setValueAtTime(this.gainRight.gain.value, now);
       this.gainRight.gain.setTargetAtTime(0, now, tau);
     }
   }
@@ -213,7 +248,6 @@ export class AudioEngine {
       const gain = synth.gainNode;
       if (gain) {
         gain.gain.cancelScheduledValues(now);
-        gain.gain.setValueAtTime(gain.gain.value, now);
         gain.gain.setTargetAtTime(0, now, tau);
       }
     }
@@ -224,8 +258,8 @@ export class AudioEngine {
       clearTimeout(this.stopTimeout);
       this.stopTimeout = null;
     }
-    try { this.carrierLeft?.stop(); } catch { /* already stopped */ }
-    try { this.carrierRight?.stop(); } catch { /* already stopped */ }
+    try { this.carrierLeft?.stop(); } catch { /* */ }
+    try { this.carrierRight?.stop(); } catch { /* */ }
     this.carrierLeft?.disconnect();
     this.carrierRight?.disconnect();
     this.gainLeft?.disconnect();
@@ -294,14 +328,13 @@ export class AudioEngine {
     if (this.carrierRight) this.carrierRight.type = waveform;
   }
 
-  // ─── Multi-ambient layer support ───
+  // ═══════════════════════════════════════════════
+  // AMBIENT LAYERS
+  // ═══════════════════════════════════════════════
 
   startAmbientLayerById(id: string, volume: number): void {
     if (!this.ctx || !this.compressor) return;
-
-    // Stop this layer if already playing
     this.stopAmbientLayerById(id);
-
     const synth = createAmbientSynth(id);
     synth.start(this.ctx, this.compressor);
     synth.setVolume(Math.min(volume, 1));
@@ -328,9 +361,7 @@ export class AudioEngine {
   }
 
   private stopAllAmbientLayersImmediate(): void {
-    for (const [, synth] of this.ambientLayers) {
-      synth.stop();
-    }
+    for (const [, synth] of this.ambientLayers) synth.stop();
     this.ambientLayers.clear();
   }
 
@@ -338,13 +369,9 @@ export class AudioEngine {
     return [...this.ambientLayers.keys()];
   }
 
-  // ─── Legacy single-ambient (Phase 1 Easy mode compat) ───
-
+  // Legacy single-ambient (Easy mode)
   async startAmbientLayer(config: AmbientLayerConfig): Promise<void> {
-    // Stop previous legacy ambient
-    if (this._legacyAmbientId) {
-      this.stopAmbientLayerById(this._legacyAmbientId);
-    }
+    if (this._legacyAmbientId) this.stopAmbientLayerById(this._legacyAmbientId);
     this.startAmbientLayerById(config.id, config.volume);
     this._legacyAmbientId = config.id;
   }
@@ -357,52 +384,47 @@ export class AudioEngine {
   }
 
   setAmbientVolume(volume: number): void {
-    if (this._legacyAmbientId) {
-      this.setAmbientLayerVolume(this._legacyAmbientId, volume);
-    }
+    if (this._legacyAmbientId) this.setAmbientLayerVolume(this._legacyAmbientId, volume);
   }
 
-  get currentAmbientId(): string | null {
-    return this._legacyAmbientId;
-  }
+  get currentAmbientId(): string | null { return this._legacyAmbientId; }
 
-  // ─── Preview tone (for carrier selection UI) ───
+  // ═══════════════════════════════════════════════
+  // PREVIEW TONE
+  // ═══════════════════════════════════════════════
 
   async previewTone(frequency: number, duration = 500): Promise<void> {
-    if (!this.ctx) await this.init();
+    await this.ensureRunning();
     const ctx = this.ctx!;
     const now = ctx.currentTime;
     const durationSec = duration / 1000;
 
     const osc = ctx.createOscillator();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(frequency, now);
+    osc.frequency.value = frequency;
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.06, now + 0.05);
-    gain.gain.setValueAtTime(0.06, now + durationSec - 0.1);
-    gain.gain.linearRampToValueAtTime(0, now + durationSec);
+    gain.gain.value = 0;
+    gain.gain.setTargetAtTime(0.06, now, 0.01);
+    gain.gain.setTargetAtTime(0, now + durationSec - 0.1, 0.03);
 
     osc.connect(gain);
     gain.connect(this.masterGain || ctx.destination);
-    osc.start(now);
+    osc.start();
     osc.stop(now + durationSec + 0.01);
   }
 
-  // ─── Getters ───
+  // ═══════════════════════════════════════════════
+  // GETTERS
+  // ═══════════════════════════════════════════════
 
-  get playing(): boolean {
-    return this._isPlaying;
-  }
-
-  get paused(): boolean {
-    return this._isPaused;
-  }
+  get playing(): boolean { return this._isPlaying; }
+  get paused(): boolean { return this._isPaused; }
+  get advancedMode(): boolean { return this._advancedMode; }
+  get isPreviewMode(): boolean { return this._isPreviewMode; }
 
   getElapsedTime(): number {
-    if (!this._isPlaying) return this.wallPauseOffset / 1000;
-    if (this._isPaused) return this.wallPauseOffset / 1000;
+    if (!this._isPlaying || this._isPaused) return this.wallPauseOffset / 1000;
     return (Date.now() - this.wallStartTime + this.wallPauseOffset) / 1000;
   }
 
@@ -410,18 +432,18 @@ export class AudioEngine {
     if (!this.ctx) return;
     const ctx = this.ctx;
     const now = ctx.currentTime;
-    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+    const notes = [523.25, 659.25, 783.99];
 
     for (let i = 0; i < notes.length; i++) {
       const osc = ctx.createOscillator();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(notes[i], now);
+      osc.frequency.value = notes[i];
 
       const gain = ctx.createGain();
       const startAt = now + i * 0.3;
-      gain.gain.setValueAtTime(0, startAt);
-      gain.gain.linearRampToValueAtTime(0.08, startAt + 0.05);
-      gain.gain.setTargetAtTime(0, startAt + 0.15, 0.1);
+      gain.gain.value = 0;
+      gain.gain.setTargetAtTime(0.08, startAt, 0.01);
+      gain.gain.setTargetAtTime(0, startAt + 0.15, 0.05);
 
       osc.connect(gain);
       gain.connect(this.masterGain || ctx.destination);
@@ -430,62 +452,21 @@ export class AudioEngine {
     }
   }
 
-  // ─── Advanced mode: Multi-beat-layer system ───
-
-  get advancedMode(): boolean {
-    return this._advancedMode;
-  }
-
-  get isPreviewMode(): boolean {
-    return this._isPreviewMode;
-  }
-
-  // Diagnostic: plays a 440Hz tone directly to destination for 1 second
-  // This bypasses the entire audio graph (compressor, masterGain, etc.)
-  async playTestTone(): Promise<void> {
-    if (!this.ctx) await this.init();
-    const ctx = this.ctx!;
-    if (ctx.state !== 'running') {
-      await ctx.resume();
-    }
-
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.frequency.value = 440;
-    gain.gain.value = 0.3;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-
-    console.log('[TEST TONE] Started 440Hz → destination', {
-      ctxState: ctx.state,
-      ctxTime: ctx.currentTime,
-      sampleRate: ctx.sampleRate,
-    });
-
-    setTimeout(() => {
-      osc.stop();
-      osc.disconnect();
-      gain.disconnect();
-      console.log('[TEST TONE] Stopped');
-    }, 1000);
-  }
-
-  // ─── Preview mode (live audio in builder) ───
+  // ═══════════════════════════════════════════════
+  // ADVANCED MODE: PREVIEW & MULTI-LAYER
+  // ═══════════════════════════════════════════════
 
   async startPreview(config: AdvancedSessionConfig): Promise<void> {
-    // Ensure audio engine is initialised
-    if (!this.ctx || !this.compressor) {
-      await this.init();
-    }
+    // 1. Context must be running (user gesture)
+    await this.ensureRunning();
 
-    // Cancel any pending stop timeout from a previous stopPreview/stopAdvanced
+    // 2. Cancel pending stop
     if (this.stopTimeout) {
       clearTimeout(this.stopTimeout);
       this.stopTimeout = null;
     }
 
-    // Stop any existing playback cleanly BEFORE resuming context
+    // 3. Clean up existing playback
     if (this._isPlaying) {
       if (this._advancedMode) {
         this.stopAdvancedImmediate();
@@ -494,173 +475,65 @@ export class AudioEngine {
       }
     }
 
-    // Clear paused flag — crucial if a previous session called pause()
     this._isPaused = false;
 
-    // Force AudioContext to running state
-    if (this.ctx!.state !== 'running') {
-      try {
-        await this.ctx!.resume();
-      } catch (e) {
-        console.warn('Failed to resume AudioContext:', e);
-      }
-      // Give the context a moment to actually start processing
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
+    // 4. Ensure master chain is connected
+    this.reconnectMasterChain();
 
-    // Double-check context is running
-    if (this.ctx!.state !== 'running') {
-      try {
-        await this.ctx!.resume();
-      } catch { /* ignore */ }
-    }
+    // 5. Build and start beat layers
+    this.buildBeatLayers(config.layers);
 
-    // Re-verify masterGain is connected (safety net)
-    if (this.masterGain && this.compressor) {
-      try {
-        this.compressor.connect(this.masterGain);
-        this.masterGain.connect(this.ctx!.destination);
-      } catch {
-        // Already connected — this is fine
-      }
-    }
-
-    // Set up beat layers
-    await this.playAdvanced(config.layers);
-
-    // Enable subsystems from config
-    if (config.filter.enabled) {
-      this.enableFilter(config.filter);
-    }
+    // 6. Enable configured subsystems
+    if (config.filter.enabled) this.enableFilter(config.filter);
     if (config.stereo.enabled) {
       this.setStereoWidth(config.stereo.width);
       this.setStereoOffset(config.stereo.pan);
-      if (config.stereo.crossfeed > 0) {
-        this.setCrossfeed(config.stereo.crossfeed);
-      }
-      if (config.stereo.rotation) {
-        this.enableSpatialRotation(config.stereo.rotationSpeed);
-      }
+      if (config.stereo.crossfeed > 0) this.setCrossfeed(config.stereo.crossfeed);
+      if (config.stereo.rotation) this.enableSpatialRotation(config.stereo.rotationSpeed);
     }
-    if (config.lfo.enabled) {
-      this.enableLFO(config.lfo);
-    }
-    if (config.isochronic.enabled) {
-      this.enableIsochronic(config.isochronic);
-    }
+    if (config.lfo.enabled) this.enableLFO(config.lfo);
+    if (config.isochronic.enabled) this.enableIsochronic(config.isochronic);
 
     this._isPreviewMode = true;
 
-    // ─── DIAGNOSTIC: Analyse the entire audio chain ───
-    const diagCtx = this.ctx!;
-
-    // Check 1: Context state
-    console.log('[DIAG 1/6] AudioContext', {
-      state: diagCtx.state,
-      currentTime: diagCtx.currentTime,
-      sampleRate: diagCtx.sampleRate,
-      baseLatency: diagCtx.baseLatency,
-    });
-
-    // Check 2: Beat layers exist
-    console.log('[DIAG 2/6] Beat Layers', {
-      count: this.beatLayers.size,
-      ids: [...this.beatLayers.keys()],
-      layerData: [...this.beatLayers.entries()].map(([id, s]) => ({
-        id,
-        oscLFreq: s.oscL.frequency.value,
-        oscRFreq: s.oscR.frequency.value,
-        gainLValue: s.gainL.gain.value,
-        gainRValue: s.gainR.gain.value,
-        layerGainValue: s.layerGain.gain.value,
-        panLValue: s.panL.pan.value,
-        panRValue: s.panR.pan.value,
-      })),
-    });
-
-    // Check 3: beatSumGain
-    console.log('[DIAG 3/6] beatSumGain', {
-      exists: !!this.beatSumGain,
-      gainValue: this.beatSumGain?.gain.value,
-    });
-
-    // Check 4: Compressor
-    console.log('[DIAG 4/6] Compressor', {
-      exists: !!this.compressor,
-      threshold: this.compressor?.threshold.value,
-      ratio: this.compressor?.ratio.value,
-      reduction: this.compressor?.reduction,
-    });
-
-    // Check 5: Master gain
-    console.log('[DIAG 5/6] MasterGain', {
-      exists: !!this.masterGain,
-      gainValue: this.masterGain?.gain.value,
-    });
-
-    // Check 6: Flags
-    console.log('[DIAG 6/6] Flags', {
-      isPlaying: this._isPlaying,
-      isPaused: this._isPaused,
-      advancedMode: this._advancedMode,
-      previewMode: this._isPreviewMode,
-      filterEnabled: this._filterEnabled,
-    });
-
-    // Check 7: Quick signal test — inject a KNOWN working tone through the same graph
-    // Create a 2-second 440Hz beep through beatSumGain → compressor → masterGain → dest
-    const testOsc = diagCtx.createOscillator();
-    const testGain = diagCtx.createGain();
-    testOsc.frequency.value = 440;
-    testGain.gain.value = 0.3;
-    testOsc.connect(testGain);
-    testGain.connect(this.beatSumGain!);
-    testOsc.start();
-    console.log('[DIAG 7] Injected 440Hz test tone through beatSumGain');
-    setTimeout(() => {
-      try { testOsc.stop(); } catch {}
-      testOsc.disconnect();
-      testGain.disconnect();
-      console.log('[DIAG 7] Test tone stopped');
-    }, 2000);
+    // 7. Background audio support
+    this.startKeepAlive();
+    this.startSilentAudioElement();
   }
 
   stopPreview(): void {
     this._isPreviewMode = false;
-    if (this._advancedMode) {
-      this.stopAdvanced();
-    }
+    if (this._advancedMode) this.stopAdvanced();
   }
 
   transitionFromPreview(): void {
-    // Audio continues uninterrupted — just clear the preview flag
     this._isPreviewMode = false;
   }
 
   async playAdvanced(layers: BeatLayer[]): Promise<void> {
-    if (!this.ctx || !this.compressor) {
-      await this.init();
-    }
+    await this.ensureRunning();
+    if (this._isPlaying) this.stopImmediate();
+    this.reconnectMasterChain();
+    this.buildBeatLayers(layers);
+    this.startKeepAlive();
+    this.startSilentAudioElement();
+  }
 
-    // Ensure context is running (may have been suspended)
-    if (this.ctx!.state !== 'running') {
-      try {
-        await this.ctx!.resume();
-      } catch { /* ignore */ }
-    }
-
-    if (this._isPlaying) {
-      this.stopImmediate();
-    }
-
+  /**
+   * Build the beat layer audio graph and start oscillators.
+   *
+   * DESIGN: All AudioParam initial values use direct .value assignment
+   * (never setValueAtTime). Oscillators start with parameterless .start().
+   * This eliminates all timing/scheduling dependencies that caused the
+   * silent-on-first-play bug.
+   */
+  private buildBeatLayers(layers: BeatLayer[]): void {
     const ctx = this.ctx!;
 
-    // Create sum gain for all beat layers
     this.beatSumGain = ctx.createGain();
     this.beatSumGain.gain.value = 1;
     this.beatSumGain.connect(this.compressor!);
 
-    // Create each beat layer
     for (const layer of layers) {
       this.createBeatLayerNodes(layer);
     }
@@ -672,44 +545,44 @@ export class AudioEngine {
     this.pauseOffset = 0;
     this.wallStartTime = Date.now();
     this.wallPauseOffset = 0;
-
-    this.startKeepAlive();
-    this.startSilentAudioElement();
   }
 
+  /**
+   * Create one beat layer: L/R oscillators, gains, panners, and layer gain.
+   * All values set via .value (direct assignment) — never setValueAtTime.
+   */
   private createBeatLayerNodes(layer: BeatLayer): void {
     const ctx = this.ctx!;
     const vol = layer.volume / 100;
     const width = this._stereoWidth / 100;
 
+    // Left channel
     const oscL = ctx.createOscillator();
     oscL.type = layer.waveform;
-    oscL.frequency.setValueAtTime(layer.carrierFreq, ctx.currentTime);
+    oscL.frequency.value = layer.carrierFreq;
 
     const gainL = ctx.createGain();
-    // Start at a small non-zero value and ramp up using setTargetAtTime
-    // (more reliable than linearRampToValueAtTime across browsers)
-    gainL.gain.value = 0.001;
-    gainL.gain.setTargetAtTime(0.5, ctx.currentTime, 0.5);
+    gainL.gain.value = 0.5;
 
     const panL = ctx.createStereoPanner();
-    panL.pan.setValueAtTime(-width, ctx.currentTime);
+    panL.pan.value = -width;
 
+    // Right channel (carrier + beat)
     const oscR = ctx.createOscillator();
     oscR.type = layer.waveform;
-    oscR.frequency.setValueAtTime(layer.carrierFreq + layer.beatFreq, ctx.currentTime);
+    oscR.frequency.value = layer.carrierFreq + layer.beatFreq;
 
     const gainR = ctx.createGain();
-    gainR.gain.value = 0.001;
-    gainR.gain.setTargetAtTime(0.5, ctx.currentTime, 0.5);
+    gainR.gain.value = 0.5;
 
     const panR = ctx.createStereoPanner();
-    panR.pan.setValueAtTime(width, ctx.currentTime);
+    panR.pan.value = width;
 
+    // Per-layer volume
     const layerGain = ctx.createGain();
     layerGain.gain.value = vol;
 
-    // Wire: osc → gain → pan → layerGain → beatSumGain
+    // Connect: osc → gain → pan → layerGain → beatSumGain
     oscL.connect(gainL);
     gainL.connect(panL);
     panL.connect(layerGain);
@@ -720,6 +593,7 @@ export class AudioEngine {
 
     layerGain.connect(this.beatSumGain!);
 
+    // Start immediately — no time argument
     oscL.start();
     oscR.start();
 
@@ -731,21 +605,15 @@ export class AudioEngine {
     const now = this.ctx.currentTime;
     const tau = 0.3;
 
-    // Fade out all beat layers
     for (const [, state] of this.beatLayers) {
       state.gainL.gain.cancelScheduledValues(now);
-      state.gainL.gain.setValueAtTime(state.gainL.gain.value, now);
       state.gainL.gain.setTargetAtTime(0, now, tau);
       state.gainR.gain.cancelScheduledValues(now);
-      state.gainR.gain.setValueAtTime(state.gainR.gain.value, now);
       state.gainR.gain.setTargetAtTime(0, now, tau);
     }
 
     this.fadeOutAllAmbient(now, tau);
-
-    this.stopTimeout = setTimeout(() => {
-      this.stopAdvancedImmediate();
-    }, 1800);
+    this.stopTimeout = setTimeout(() => this.stopAdvancedImmediate(), 1800);
   }
 
   private stopAdvancedImmediate(): void {
@@ -754,22 +622,19 @@ export class AudioEngine {
       this.stopTimeout = null;
     }
 
-    // Disable all subsystems
     this.disableFilter();
     this.disableLFO();
     this.disableIsochronic();
     this.disableSpatialRotation();
 
-    // Clean up master pan
     if (this.masterPan) {
       this.masterPan.disconnect();
       this.masterPan = null;
     }
 
-    // Clean up beat layers
     for (const [, state] of this.beatLayers) {
-      try { state.oscL.stop(); } catch { /* already stopped */ }
-      try { state.oscR.stop(); } catch { /* already stopped */ }
+      try { state.oscL.stop(); } catch { /* */ }
+      try { state.oscR.stop(); } catch { /* */ }
       state.oscL.disconnect();
       state.oscR.disconnect();
       state.gainL.disconnect();
@@ -787,6 +652,9 @@ export class AudioEngine {
 
     this.stopAllAmbientLayersImmediate();
 
+    // Reconnect master chain so it's ready for next play
+    this.reconnectMasterChain();
+
     this._advancedMode = false;
     this._isPreviewMode = false;
     this._isPlaying = false;
@@ -800,12 +668,14 @@ export class AudioEngine {
     this.clearMediaSession();
   }
 
+  // Beat layer live controls
+
   setBeatLayerFrequency(id: string, carrier: number, beat: number): void {
     const state = this.beatLayers.get(id);
     if (!state || !this.ctx) return;
     const now = this.ctx.currentTime;
-    state.oscL.frequency.linearRampToValueAtTime(carrier, now + 0.05);
-    state.oscR.frequency.linearRampToValueAtTime(carrier + beat, now + 0.05);
+    state.oscL.frequency.setTargetAtTime(carrier, now, 0.05);
+    state.oscR.frequency.setTargetAtTime(carrier + beat, now, 0.05);
   }
 
   setBeatLayerVolume(id: string, volume: number): void {
@@ -823,7 +693,6 @@ export class AudioEngine {
 
   addBeatLayer(layer: BeatLayer): void {
     if (!this._advancedMode || !this.ctx || !this.beatSumGain) return;
-    // Remove if already exists
     this.removeBeatLayer(layer.id);
     this.createBeatLayerNodes(layer);
   }
@@ -833,13 +702,12 @@ export class AudioEngine {
     if (!state || !this.ctx) return;
     const now = this.ctx.currentTime;
 
-    // Fade out then cleanup
     state.gainL.gain.setTargetAtTime(0, now, 0.1);
     state.gainR.gain.setTargetAtTime(0, now, 0.1);
 
     setTimeout(() => {
-      try { state.oscL.stop(); } catch { /* already stopped */ }
-      try { state.oscR.stop(); } catch { /* already stopped */ }
+      try { state.oscL.stop(); } catch { /* */ }
+      try { state.oscR.stop(); } catch { /* */ }
       state.oscL.disconnect();
       state.oscR.disconnect();
       state.gainL.disconnect();
@@ -852,24 +720,19 @@ export class AudioEngine {
     this.beatLayers.delete(id);
   }
 
-  // ─── Filter subsystem ───
+  // ═══════════════════════════════════════════════
+  // FILTER
+  // ═══════════════════════════════════════════════
 
   enableFilter(config: FilterConfig): void {
     if (!this.ctx || !this.beatSumGain || !this.compressor) return;
-
     this.disableFilter();
 
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-
-    this.filterNode = ctx.createBiquadFilter();
+    this.filterNode = this.ctx.createBiquadFilter();
     this.filterNode.type = config.type;
-    this.filterNode.frequency.setValueAtTime(config.frequency, now);
-    // Map resonance 0–100 to Q 0.1–20
-    const q = 0.1 + (config.resonance / 100) * 19.9;
-    this.filterNode.Q.setValueAtTime(q, now);
+    this.filterNode.frequency.value = config.frequency;
+    this.filterNode.Q.value = 0.1 + (config.resonance / 100) * 19.9;
 
-    // Reconnect: beatSumGain → filter → compressor
     this.beatSumGain.disconnect();
     this.beatSumGain.connect(this.filterNode);
     this.filterNode.connect(this.compressor);
@@ -881,82 +744,59 @@ export class AudioEngine {
     const now = this.ctx.currentTime;
     this.filterNode.type = config.type;
     this.filterNode.frequency.setTargetAtTime(config.frequency, now, 0.02);
-    const q = 0.1 + (config.resonance / 100) * 19.9;
-    this.filterNode.Q.setTargetAtTime(q, now, 0.02);
+    this.filterNode.Q.setTargetAtTime(0.1 + (config.resonance / 100) * 19.9, now, 0.02);
   }
 
   disableFilter(): void {
     if (!this.filterNode || !this.beatSumGain || !this.compressor) return;
-
-    // Reconnect beatSumGain directly to compressor
     this.beatSumGain.disconnect();
     this.filterNode.disconnect();
     this.beatSumGain.connect(this.compressor);
-
     this.filterNode = null;
     this._filterEnabled = false;
   }
 
-  // ─── LFO subsystem ───
+  // ═══════════════════════════════════════════════
+  // LFO
+  // ═══════════════════════════════════════════════
 
   enableLFO(config: LFOConfig): void {
     if (!this.ctx) return;
     this.disableLFO();
 
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-
-    this.lfoOsc = ctx.createOscillator();
+    this.lfoOsc = this.ctx.createOscillator();
     this.lfoOsc.type = config.shape;
-    this.lfoOsc.frequency.setValueAtTime(config.rate, now);
+    this.lfoOsc.frequency.value = config.rate;
 
-    this.lfoGain = ctx.createGain();
+    this.lfoGain = this.ctx.createGain();
     const depth = config.depth / 100;
 
-    // Connect LFO to target
     let target: AudioParam | null = null;
     let gainAmount = 0;
 
     switch (config.target) {
       case 'volume':
-        if (this.masterGain) {
-          target = this.masterGain.gain;
-          gainAmount = depth * 0.15; // ±50% of typical master volume (~0.3)
-        }
+        if (this.masterGain) { target = this.masterGain.gain; gainAmount = depth * 0.15; }
         break;
-      case 'pitch':
-        // Modulate all beat layer oscillators — use first layer's oscL as representative
-        if (this.beatLayers.size > 0) {
-          const firstLayer = this.beatLayers.values().next().value!;
-          target = firstLayer.oscL.frequency;
-          gainAmount = depth * firstLayer.oscL.frequency.value * 0.05; // ±5% of carrier
-        }
+      case 'pitch': {
+        const first = this.beatLayers.values().next().value;
+        if (first) { target = first.oscL.frequency; gainAmount = depth * first.oscL.frequency.value * 0.05; }
         break;
+      }
       case 'filter':
-        if (this.filterNode) {
-          target = this.filterNode.frequency;
-          gainAmount = depth * this.filterNode.frequency.value * 0.5;
-        }
+        if (this.filterNode) { target = this.filterNode.frequency; gainAmount = depth * this.filterNode.frequency.value * 0.5; }
         break;
       case 'pan':
-        if (this.masterPan) {
-          target = this.masterPan.pan;
-          gainAmount = depth;
-        }
+        if (this.masterPan) { target = this.masterPan.pan; gainAmount = depth; }
         break;
     }
 
-    if (!target) {
-      // No valid target, don't create LFO
-      this.lfoOsc = null;
-      this.lfoGain = null;
-      return;
-    }
+    if (!target) { this.lfoOsc = null; this.lfoGain = null; return; }
 
-    this.lfoGain.gain.setValueAtTime(gainAmount, now);
+    this.lfoGain.gain.value = gainAmount;
     this.lfoOsc.connect(this.lfoGain);
     this.lfoGain.connect(target);
-    this.lfoOsc.start(now);
+    this.lfoOsc.start();
   }
 
   updateLFO(config: LFOConfig): void {
@@ -965,61 +805,41 @@ export class AudioEngine {
     this.lfoOsc.frequency.setTargetAtTime(config.rate, now, 0.02);
     this.lfoOsc.type = config.shape;
 
-    // Re-calculate gain depth
     const depth = config.depth / 100;
-    let gainAmount = 0;
+    let g = 0;
     switch (config.target) {
-      case 'volume':
-        gainAmount = depth * 0.15;
-        break;
-      case 'pitch': {
-        const firstLayer = this.beatLayers.values().next().value;
-        gainAmount = firstLayer ? depth * firstLayer.oscL.frequency.value * 0.05 : 0;
-        break;
-      }
-      case 'filter':
-        gainAmount = this.filterNode ? depth * this.filterNode.frequency.value * 0.5 : 0;
-        break;
-      case 'pan':
-        gainAmount = depth;
-        break;
+      case 'volume': g = depth * 0.15; break;
+      case 'pitch': { const f = this.beatLayers.values().next().value; g = f ? depth * f.oscL.frequency.value * 0.05 : 0; break; }
+      case 'filter': g = this.filterNode ? depth * this.filterNode.frequency.value * 0.5 : 0; break;
+      case 'pan': g = depth; break;
     }
-    this.lfoGain.gain.setTargetAtTime(gainAmount, now, 0.02);
+    this.lfoGain.gain.setTargetAtTime(g, now, 0.02);
   }
 
   disableLFO(): void {
-    if (this.lfoOsc) {
-      try { this.lfoOsc.stop(); } catch { /* already stopped */ }
-      this.lfoOsc.disconnect();
-      this.lfoOsc = null;
-    }
-    if (this.lfoGain) {
-      this.lfoGain.disconnect();
-      this.lfoGain = null;
-    }
+    if (this.lfoOsc) { try { this.lfoOsc.stop(); } catch { /* */ } this.lfoOsc.disconnect(); this.lfoOsc = null; }
+    if (this.lfoGain) { this.lfoGain.disconnect(); this.lfoGain = null; }
   }
 
-  // ─── Isochronic tone subsystem ───
+  // ═══════════════════════════════════════════════
+  // ISOCHRONIC
+  // ═══════════════════════════════════════════════
 
   enableIsochronic(config: IsochronicConfig): void {
     if (!this.ctx || !this.compressor) return;
     this.disableIsochronic();
 
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-
-    this.isoOsc = ctx.createOscillator();
+    this.isoOsc = this.ctx.createOscillator();
     this.isoOsc.type = 'sine';
-    this.isoOsc.frequency.setValueAtTime(config.toneFreq, now);
+    this.isoOsc.frequency.value = config.toneFreq;
 
-    this.isoGain = ctx.createGain();
-    this.isoGain.gain.setValueAtTime(0, now);
-    // Isochronic bypasses filter, goes directly to compressor
+    this.isoGain = this.ctx.createGain();
+    this.isoGain.gain.value = 0;
     this.isoOsc.connect(this.isoGain);
     this.isoGain.connect(this.compressor);
-    this.isoOsc.start(now);
+    this.isoOsc.start();
 
-    this.nextPulseTime = now;
+    this.nextPulseTime = this.ctx.currentTime;
     this.startIsoPulseScheduler(config);
   }
 
@@ -1027,10 +847,9 @@ export class AudioEngine {
     if (!this.ctx) return;
     const ctx = this.ctx;
     const pulsePeriod = 1 / config.pulseRate;
-    const pulseOn = pulsePeriod * 0.5; // 50% duty cycle
+    const pulseOn = pulsePeriod * 0.5;
     const vol = (config.volume / 100) * 0.4;
 
-    // 25ms lookahead scheduler
     this.isoPulseTimer = setInterval(() => {
       if (!this.isoGain || !ctx) return;
       const now = ctx.currentTime;
@@ -1038,27 +857,22 @@ export class AudioEngine {
 
       while (this.nextPulseTime < lookahead) {
         const t = this.nextPulseTime;
-
         switch (config.shape) {
           case 'sharp':
-            // Square pulse: on then off
             this.isoGain.gain.setValueAtTime(vol, t);
             this.isoGain.gain.setValueAtTime(0, t + pulseOn);
             break;
           case 'soft':
-            // Sine ramp up then down
             this.isoGain.gain.setValueAtTime(0, t);
             this.isoGain.gain.linearRampToValueAtTime(vol, t + pulseOn * 0.5);
             this.isoGain.gain.linearRampToValueAtTime(0, t + pulseOn);
             break;
           case 'ramp':
-            // Sawtooth: ramp up then drop
             this.isoGain.gain.setValueAtTime(0, t);
             this.isoGain.gain.linearRampToValueAtTime(vol, t + pulseOn * 0.9);
             this.isoGain.gain.setValueAtTime(0, t + pulseOn);
             break;
         }
-
         this.nextPulseTime += pulsePeriod;
       }
     }, 25);
@@ -1067,38 +881,25 @@ export class AudioEngine {
   updateIsochronic(config: IsochronicConfig): void {
     if (!this.isoOsc || !this.ctx) return;
     this.isoOsc.frequency.setTargetAtTime(config.toneFreq, this.ctx.currentTime, 0.02);
-
-    // Restart pulse scheduler with new config
-    if (this.isoPulseTimer) {
-      clearInterval(this.isoPulseTimer);
-    }
+    if (this.isoPulseTimer) clearInterval(this.isoPulseTimer);
     this.startIsoPulseScheduler(config);
   }
 
   disableIsochronic(): void {
-    if (this.isoPulseTimer) {
-      clearInterval(this.isoPulseTimer);
-      this.isoPulseTimer = null;
-    }
-    if (this.isoOsc) {
-      try { this.isoOsc.stop(); } catch { /* already stopped */ }
-      this.isoOsc.disconnect();
-      this.isoOsc = null;
-    }
-    if (this.isoGain) {
-      this.isoGain.disconnect();
-      this.isoGain = null;
-    }
+    if (this.isoPulseTimer) { clearInterval(this.isoPulseTimer); this.isoPulseTimer = null; }
+    if (this.isoOsc) { try { this.isoOsc.stop(); } catch { /* */ } this.isoOsc.disconnect(); this.isoOsc = null; }
+    if (this.isoGain) { this.isoGain.disconnect(); this.isoGain = null; }
   }
 
-  // ─── Stereo subsystem ───
+  // ═══════════════════════════════════════════════
+  // STEREO
+  // ═══════════════════════════════════════════════
 
   setStereoWidth(width: number): void {
     if (!this.ctx) return;
     this._stereoWidth = width;
     const w = width / 100;
     const now = this.ctx.currentTime;
-
     for (const [, state] of this.beatLayers) {
       state.panL.pan.setTargetAtTime(-w, now, 0.02);
       state.panR.pan.setTargetAtTime(w, now, 0.02);
@@ -1107,67 +908,52 @@ export class AudioEngine {
 
   setStereoOffset(pan: number): void {
     if (!this.ctx || !this.compressor || !this.masterGain) return;
-    const now = this.ctx.currentTime;
 
     if (!this.masterPan) {
       this.masterPan = this.ctx.createStereoPanner();
-      // Insert between compressor and masterGain
       this.compressor.disconnect();
       this.compressor.connect(this.masterPan);
       this.masterPan.connect(this.masterGain);
     }
 
-    this.masterPan.pan.setTargetAtTime(pan / 100, now, 0.02);
+    this.masterPan.pan.setTargetAtTime(pan / 100, this.ctx.currentTime, 0.02);
   }
 
   setCrossfeed(amount: number): void {
-    // Crossfeed: reduce stereo width toward center
-    // amount 0 = no crossfeed (full stereo), 50 = maximum crossfeed (near mono)
-    const effectiveWidth = this._stereoWidth * (1 - amount / 100);
-    this.setStereoWidth(effectiveWidth);
+    this.setStereoWidth(this._stereoWidth * (1 - amount / 100));
   }
 
   enableSpatialRotation(speed: number): void {
     if (!this.ctx || !this.masterPan) return;
     this.disableSpatialRotation();
 
-    const ctx = this.ctx;
-    const now = ctx.currentTime;
-
-    this.rotationLfo = ctx.createOscillator();
+    this.rotationLfo = this.ctx.createOscillator();
     this.rotationLfo.type = 'sine';
-    this.rotationLfo.frequency.setValueAtTime(speed, now);
+    this.rotationLfo.frequency.value = speed;
 
-    this.rotationLfoGain = ctx.createGain();
-    this.rotationLfoGain.gain.setValueAtTime(0.8, now);
+    this.rotationLfoGain = this.ctx.createGain();
+    this.rotationLfoGain.gain.value = 0.8;
 
     this.rotationLfo.connect(this.rotationLfoGain);
     this.rotationLfoGain.connect(this.masterPan.pan);
-    this.rotationLfo.start(now);
+    this.rotationLfo.start();
   }
 
   disableSpatialRotation(): void {
-    if (this.rotationLfo) {
-      try { this.rotationLfo.stop(); } catch { /* already stopped */ }
-      this.rotationLfo.disconnect();
-      this.rotationLfo = null;
-    }
-    if (this.rotationLfoGain) {
-      this.rotationLfoGain.disconnect();
-      this.rotationLfoGain = null;
-    }
+    if (this.rotationLfo) { try { this.rotationLfo.stop(); } catch { /* */ } this.rotationLfo.disconnect(); this.rotationLfo = null; }
+    if (this.rotationLfoGain) { this.rotationLfoGain.disconnect(); this.rotationLfoGain = null; }
   }
 
-  // ─── Background audio support ───
+  // ═══════════════════════════════════════════════
+  // BACKGROUND AUDIO
+  // ═══════════════════════════════════════════════
 
   private setupVisibilityHandler(): void {
     if (this._visibilityHandlerSetup) return;
     this._visibilityHandlerSetup = true;
 
     const handleResume = () => {
-      if (this._isPlaying && !this._isPaused) {
-        this.resumeFromBackground();
-      }
+      if (this._isPlaying && !this._isPaused) this.resumeFromBackground();
     };
 
     document.addEventListener('visibilitychange', () => {
@@ -1179,11 +965,7 @@ export class AudioEngine {
   async resumeFromBackground(): Promise<void> {
     if (!this.ctx) return;
     if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
-      try {
-        await this.ctx.resume();
-      } catch (e) {
-        console.warn('Failed to resume AudioContext:', e);
-      }
+      try { await this.ctx.resume(); } catch (e) { console.warn('Failed to resume AudioContext:', e); }
     }
   }
 
@@ -1201,15 +983,11 @@ export class AudioEngine {
   }
 
   private stopKeepAlive(): void {
-    if (this.keepAliveInterval) {
-      clearInterval(this.keepAliveInterval);
-      this.keepAliveInterval = null;
-    }
+    if (this.keepAliveInterval) { clearInterval(this.keepAliveInterval); this.keepAliveInterval = null; }
   }
 
   private startSilentAudioElement(): void {
     if (this.silentAudio) return;
-
     const silentWav = this.createSilentWav();
     const blob = new Blob([silentWav], { type: 'audio/wav' });
     const url = URL.createObjectURL(blob);
@@ -1217,39 +995,22 @@ export class AudioEngine {
     this.silentAudio = new Audio(url);
     this.silentAudio.loop = true;
     this.silentAudio.volume = 0.01;
-    // iOS attributes to keep audio session alive
     this.silentAudio.setAttribute('playsinline', '');
     this.silentAudio.setAttribute('webkit-playsinline', '');
-    this.silentAudio.play().catch(() => {
-      // Autoplay may be blocked — will start on next user gesture
-    });
+    this.silentAudio.play().catch(() => {});
   }
 
   private createSilentWav(): ArrayBuffer {
     const sampleRate = 8000;
-    const numSamples = sampleRate; // 1 second
+    const numSamples = sampleRate;
     const buffer = new ArrayBuffer(44 + numSamples * 2);
     const view = new DataView(buffer);
-
-    const writeString = (offset: number, str: string) => {
-      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-    };
-
-    writeString(0, 'RIFF');
-    view.setUint32(4, 36 + numSamples * 2, true);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    writeString(36, 'data');
+    const ws = (o: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+    ws(0, 'RIFF'); view.setUint32(4, 36 + numSamples * 2, true); ws(8, 'WAVE'); ws(12, 'fmt ');
+    view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true); view.setUint16(34, 16, true); ws(36, 'data');
     view.setUint32(40, numSamples * 2, true);
-
-    // Silent samples — already zero-initialised by ArrayBuffer
     return buffer;
   }
 
@@ -1263,32 +1024,21 @@ export class AudioEngine {
     }
   }
 
+  // ═══════════════════════════════════════════════
+  // MEDIA SESSION
+  // ═══════════════════════════════════════════════
+
   setupMediaSession(title: string, category: string, callbacks: {
-    onPause?: () => void;
-    onResume?: () => void;
-    onStop?: () => void;
+    onPause?: () => void; onResume?: () => void; onStop?: () => void;
   }, artwork?: MediaImage[]): void {
     this._mediaSessionCallbacks = callbacks;
     if (!('mediaSession' in navigator)) return;
-
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: title || 'Binaural Session',
-      artist: 'Binara',
-      album: category || 'Binaural Beats',
-      artwork: artwork || [],
+      title: title || 'Binaural Session', artist: 'Binara', album: category || 'Binaural Beats', artwork: artwork || [],
     });
-
-    navigator.mediaSession.setActionHandler('play', () => {
-      callbacks.onResume?.();
-    });
-
-    navigator.mediaSession.setActionHandler('pause', () => {
-      callbacks.onPause?.();
-    });
-
-    navigator.mediaSession.setActionHandler('stop', () => {
-      callbacks.onStop?.();
-    });
+    navigator.mediaSession.setActionHandler('play', () => callbacks.onResume?.());
+    navigator.mediaSession.setActionHandler('pause', () => callbacks.onPause?.());
+    navigator.mediaSession.setActionHandler('stop', () => callbacks.onStop?.());
   }
 
   private clearMediaSession(): void {
@@ -1301,23 +1051,14 @@ export class AudioEngine {
     }
   }
 
+  // ═══════════════════════════════════════════════
+  // DESTROY
+  // ═══════════════════════════════════════════════
+
   destroy(): void {
-    if (this._advancedMode) {
-      this.stopAdvancedImmediate();
-    } else {
-      this.stopImmediate();
-    }
-    if (this.compressor) {
-      this.compressor.disconnect();
-      this.compressor = null;
-    }
-    if (this.masterGain) {
-      this.masterGain.disconnect();
-      this.masterGain = null;
-    }
-    if (this.ctx) {
-      this.ctx.close().catch(() => {});
-      this.ctx = null;
-    }
+    if (this._advancedMode) { this.stopAdvancedImmediate(); } else { this.stopImmediate(); }
+    if (this.compressor) { this.compressor.disconnect(); this.compressor = null; }
+    if (this.masterGain) { this.masterGain.disconnect(); this.masterGain = null; }
+    if (this.ctx) { this.ctx.close().catch(() => {}); this.ctx = null; }
   }
 }

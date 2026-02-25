@@ -10,6 +10,7 @@ export interface UseAudioEngineReturn {
   isPaused: boolean;
   isInitialized: boolean;
   currentTime: number;
+  // Listen mode
   play: (config: AudioEngineConfig) => Promise<void>;
   stop: () => void;
   stopWithLongFade: () => void;
@@ -21,7 +22,7 @@ export interface UseAudioEngineReturn {
   addAmbient: (id: string, volume: number) => Promise<void>;
   removeAmbient: () => void;
   setAmbientVolume: (volume: number) => void;
-  // Multi-ambient (Mix mode)
+  // Multi-ambient (Mix/Create modes)
   addAmbientLayer: (id: string, volume: number) => void;
   removeAmbientLayer: (id: string) => void;
   setAmbientLayerVolume: (id: string, volume: number) => void;
@@ -39,9 +40,7 @@ export interface UseAudioEngineReturn {
     onResume?: () => void;
     onStop?: () => void;
   }, artwork?: MediaImage[]) => void;
-  // Diagnostic
-  playTestTone: () => Promise<void>;
-  // Preview mode (live audio in builder)
+  // Preview mode (Create builder live audio)
   startPreview: (config: AdvancedSessionConfig) => Promise<void>;
   stopPreview: () => void;
   isPreviewMode: boolean;
@@ -53,6 +52,7 @@ export interface UseAudioEngineReturn {
   setBeatLayerWaveform: (id: string, waveform: OscillatorType) => void;
   addBeatLayer: (layer: BeatLayer) => void;
   removeBeatLayer: (id: string) => void;
+  // Subsystems
   enableFilter: (config: FilterConfig) => void;
   updateFilter: (config: FilterConfig) => void;
   disableFilter: () => void;
@@ -90,13 +90,13 @@ export function useAudioEngine(): UseAudioEngineReturn {
     setIsInitialized(true);
   }, [getEngine]);
 
+  // ─── Time polling ───
+
   const startPolling = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(() => {
       const engine = engineRef.current;
-      if (engine) {
-        setCurrentTime(engine.getElapsedTime());
-      }
+      if (engine) setCurrentTime(engine.getElapsedTime());
     }, 1000);
   }, []);
 
@@ -106,6 +106,8 @@ export function useAudioEngine(): UseAudioEngineReturn {
       intervalRef.current = null;
     }
   }, []);
+
+  // ─── Listen mode ───
 
   const play = useCallback(async (config: AudioEngineConfig) => {
     const engine = getEngine();
@@ -158,10 +160,10 @@ export function useAudioEngine(): UseAudioEngineReturn {
     engineRef.current?.setCarrierFrequency(left, right);
   }, []);
 
-  // Legacy single-ambient
+  // ─── Legacy single-ambient ───
+
   const addAmbient = useCallback(async (id: string, volume: number) => {
-    const vol = volume / 100;
-    await engineRef.current?.startAmbientLayer({ id, volume: vol, loop: true });
+    await engineRef.current?.startAmbientLayer({ id, volume: volume / 100, loop: true });
   }, []);
 
   const removeAmbient = useCallback(() => {
@@ -169,14 +171,13 @@ export function useAudioEngine(): UseAudioEngineReturn {
   }, []);
 
   const setAmbientVolume = useCallback((volume: number) => {
-    const vol = volume / 100;
-    engineRef.current?.setAmbientVolume(vol);
+    engineRef.current?.setAmbientVolume(volume / 100);
   }, []);
 
-  // Multi-ambient
+  // ─── Multi-ambient ───
+
   const addAmbientLayer = useCallback((id: string, volume: number) => {
-    const vol = volume / 100;
-    engineRef.current?.startAmbientLayerById(id, vol);
+    engineRef.current?.startAmbientLayerById(id, volume / 100);
   }, []);
 
   const removeAmbientLayer = useCallback((id: string) => {
@@ -184,15 +185,15 @@ export function useAudioEngine(): UseAudioEngineReturn {
   }, []);
 
   const setAmbientLayerVolume = useCallback((id: string, volume: number) => {
-    const vol = volume / 100;
-    engineRef.current?.setAmbientLayerVolume(id, vol);
+    engineRef.current?.setAmbientLayerVolume(id, volume / 100);
   }, []);
 
   const stopAllAmbientLayers = useCallback(() => {
     engineRef.current?.stopAllAmbientLayers();
   }, []);
 
-  // Preview
+  // ─── Preview & misc ───
+
   const previewTone = useCallback(async (frequency: number) => {
     const engine = getEngine();
     if (!engine.isInitialized) await engine.init();
@@ -207,14 +208,7 @@ export function useAudioEngine(): UseAudioEngineReturn {
     return engineRef.current?.getElapsedTime() ?? 0;
   }, []);
 
-  // Diagnostic
-  const playTestTone = useCallback(async () => {
-    const engine = getEngine();
-    if (!engine.isInitialized) await engine.init();
-    await engine.playTestTone();
-  }, [getEngine]);
-
-  // ─── Advanced mode wrappers ───
+  // ─── Advanced mode ───
 
   const playAdvanced = useCallback(async (layers: BeatLayer[]) => {
     const engine = getEngine();
@@ -236,7 +230,7 @@ export function useAudioEngine(): UseAudioEngineReturn {
     }, 2000);
   }, [stopPolling]);
 
-  // ─── Preview mode wrappers ───
+  // ─── Preview mode (Create builder) ───
 
   const startPreview = useCallback(async (config: AdvancedSessionConfig) => {
     const engine = getEngine();
@@ -254,6 +248,8 @@ export function useAudioEngine(): UseAudioEngineReturn {
   }, []);
 
   const isPreviewMode = engineRef.current?.isPreviewMode ?? false;
+
+  // ─── Beat layer controls ───
 
   const setBeatLayerFrequency = useCallback((id: string, carrier: number, beat: number) => {
     engineRef.current?.setBeatLayerFrequency(id, carrier, beat);
@@ -275,73 +271,36 @@ export function useAudioEngine(): UseAudioEngineReturn {
     engineRef.current?.removeBeatLayer(id);
   }, []);
 
-  const enableFilter = useCallback((config: FilterConfig) => {
-    engineRef.current?.enableFilter(config);
-  }, []);
+  // ─── Subsystem controls ───
 
-  const updateFilter = useCallback((config: FilterConfig) => {
-    engineRef.current?.updateFilter(config);
-  }, []);
+  const enableFilter = useCallback((config: FilterConfig) => { engineRef.current?.enableFilter(config); }, []);
+  const updateFilter = useCallback((config: FilterConfig) => { engineRef.current?.updateFilter(config); }, []);
+  const disableFilter = useCallback(() => { engineRef.current?.disableFilter(); }, []);
+  const enableLFO = useCallback((config: LFOConfig) => { engineRef.current?.enableLFO(config); }, []);
+  const updateLFO = useCallback((config: LFOConfig) => { engineRef.current?.updateLFO(config); }, []);
+  const disableLFO = useCallback(() => { engineRef.current?.disableLFO(); }, []);
+  const enableIsochronic = useCallback((config: IsochronicConfig) => { engineRef.current?.enableIsochronic(config); }, []);
+  const updateIsochronic = useCallback((config: IsochronicConfig) => { engineRef.current?.updateIsochronic(config); }, []);
+  const disableIsochronic = useCallback(() => { engineRef.current?.disableIsochronic(); }, []);
+  const setStereoWidth = useCallback((width: number) => { engineRef.current?.setStereoWidth(width); }, []);
+  const setStereoOffset = useCallback((pan: number) => { engineRef.current?.setStereoOffset(pan); }, []);
+  const setCrossfeed = useCallback((amount: number) => { engineRef.current?.setCrossfeed(amount); }, []);
+  const enableSpatialRotation = useCallback((speed: number) => { engineRef.current?.enableSpatialRotation(speed); }, []);
+  const disableSpatialRotation = useCallback(() => { engineRef.current?.disableSpatialRotation(); }, []);
 
-  const disableFilter = useCallback(() => {
-    engineRef.current?.disableFilter();
-  }, []);
-
-  const enableLFO = useCallback((config: LFOConfig) => {
-    engineRef.current?.enableLFO(config);
-  }, []);
-
-  const updateLFO = useCallback((config: LFOConfig) => {
-    engineRef.current?.updateLFO(config);
-  }, []);
-
-  const disableLFO = useCallback(() => {
-    engineRef.current?.disableLFO();
-  }, []);
-
-  const enableIsochronic = useCallback((config: IsochronicConfig) => {
-    engineRef.current?.enableIsochronic(config);
-  }, []);
-
-  const updateIsochronic = useCallback((config: IsochronicConfig) => {
-    engineRef.current?.updateIsochronic(config);
-  }, []);
-
-  const disableIsochronic = useCallback(() => {
-    engineRef.current?.disableIsochronic();
-  }, []);
-
-  const setStereoWidth = useCallback((width: number) => {
-    engineRef.current?.setStereoWidth(width);
-  }, []);
-
-  const setStereoOffset = useCallback((pan: number) => {
-    engineRef.current?.setStereoOffset(pan);
-  }, []);
-
-  const setCrossfeed = useCallback((amount: number) => {
-    engineRef.current?.setCrossfeed(amount);
-  }, []);
-
-  const enableSpatialRotation = useCallback((speed: number) => {
-    engineRef.current?.enableSpatialRotation(speed);
-  }, []);
-
-  const disableSpatialRotation = useCallback(() => {
-    engineRef.current?.disableSpatialRotation();
-  }, []);
+  // ─── Background audio ───
 
   const resumeFromBackground = useCallback(async () => {
     await engineRef.current?.resumeFromBackground();
   }, []);
 
   const setupMediaSession = useCallback((title: string, category: string, callbacks: {
-    onPause?: () => void;
-    onResume?: () => void;
-    onStop?: () => void;
+    onPause?: () => void; onResume?: () => void; onStop?: () => void;
   }, artwork?: MediaImage[]) => {
     engineRef.current?.setupMediaSession(title, category, callbacks, artwork);
   }, []);
+
+  // ─── Cleanup on unmount ───
 
   useEffect(() => {
     return () => {
@@ -352,58 +311,20 @@ export function useAudioEngine(): UseAudioEngineReturn {
   }, [stopPolling]);
 
   return {
-    isPlaying,
-    isPaused,
-    isInitialized,
-    currentTime,
-    play,
-    stop,
-    stopWithLongFade,
-    pause,
-    resume,
-    setVolume,
-    setFrequency,
-    addAmbient,
-    removeAmbient,
-    setAmbientVolume,
-    addAmbientLayer,
-    removeAmbientLayer,
-    setAmbientLayerVolume,
-    stopAllAmbientLayers,
-    previewTone,
-    init,
-    playCompletionChime,
-    getElapsedTime,
-    getEngine,
-    resumeFromBackground,
-    setupMediaSession,
-    // Diagnostic
-    playTestTone,
-    // Preview mode
-    startPreview,
-    stopPreview,
-    isPreviewMode,
-    // Advanced mode
-    playAdvanced,
-    stopAdvanced,
-    setBeatLayerFrequency,
-    setBeatLayerVolume,
-    setBeatLayerWaveform,
-    addBeatLayer,
-    removeBeatLayer,
-    enableFilter,
-    updateFilter,
-    disableFilter,
-    enableLFO,
-    updateLFO,
-    disableLFO,
-    enableIsochronic,
-    updateIsochronic,
-    disableIsochronic,
-    setStereoWidth,
-    setStereoOffset,
-    setCrossfeed,
-    enableSpatialRotation,
-    disableSpatialRotation,
+    isPlaying, isPaused, isInitialized, currentTime,
+    play, stop, stopWithLongFade, pause, resume, setVolume, setFrequency,
+    addAmbient, removeAmbient, setAmbientVolume,
+    addAmbientLayer, removeAmbientLayer, setAmbientLayerVolume, stopAllAmbientLayers,
+    previewTone, init, playCompletionChime, getElapsedTime, getEngine,
+    resumeFromBackground, setupMediaSession,
+    startPreview, stopPreview, isPreviewMode,
+    playAdvanced, stopAdvanced,
+    setBeatLayerFrequency, setBeatLayerVolume, setBeatLayerWaveform,
+    addBeatLayer, removeBeatLayer,
+    enableFilter, updateFilter, disableFilter,
+    enableLFO, updateLFO, disableLFO,
+    enableIsochronic, updateIsochronic, disableIsochronic,
+    setStereoWidth, setStereoOffset, setCrossfeed,
+    enableSpatialRotation, disableSpatialRotation,
   };
 }

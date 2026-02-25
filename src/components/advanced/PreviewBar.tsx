@@ -11,7 +11,6 @@ interface PreviewBarProps {
   onDisable: () => void;
   onToggleMute: () => void;
   onVolumeChange: (volume: number) => void;
-  onTestTone?: () => void;
 }
 
 export default function PreviewBar({
@@ -22,7 +21,6 @@ export default function PreviewBar({
   onDisable,
   onToggleMute,
   onVolumeChange,
-  onTestTone,
 }: PreviewBarProps) {
   if (!isActive) {
     return (
@@ -41,22 +39,6 @@ export default function PreviewBar({
           </svg>
           <span>Tap to start playing</span>
         </button>
-        {onTestTone && (
-          <button
-            onClick={onTestTone}
-            style={{
-              padding: '4px 12px',
-              background: 'rgba(255,255,255,0.1)',
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: '16px',
-              color: 'white',
-              fontSize: '12px',
-              cursor: 'pointer',
-            }}
-          >
-            {"🔊"} Test
-          </button>
-        )}
       </div>
     );
   }
