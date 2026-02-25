@@ -8,6 +8,8 @@ import VolumeSlider from './VolumeSlider';
 import SensorToggle from './SensorToggle';
 import AutoMotionToggle from './AutoMotionToggle';
 import AmbientSelector from './AmbientSelector';
+import SleepTimer from './SleepTimer';
+import PhaseIndicator from './PhaseIndicator';
 import DurationSelector from './DurationSelector';
 import InfoSection from './InfoSection';
 
@@ -30,6 +32,12 @@ interface PlayerViewProps {
   onUpdateLayerVolume: (id: string, volume: number) => void;
   onRemoveLayer: (id: string) => void;
   onClearAmbient: () => void;
+  sleepTimer: number | null;
+  onSleepTimerChange: (value: number | null) => void;
+  sleepTimerRemaining: number | null;
+  listenPhase: 'easeIn' | 'deep' | 'easeOut';
+  listenBeatFreq: number;
+  listenTotalProgress: number;
   sensorActive?: boolean;
   onSensorToggle?: () => void;
   autoMotionActive?: boolean;
@@ -57,6 +65,12 @@ export default function PlayerView({
   onUpdateLayerVolume,
   onRemoveLayer,
   onClearAmbient,
+  sleepTimer,
+  onSleepTimerChange,
+  sleepTimerRemaining,
+  listenPhase,
+  listenBeatFreq,
+  listenTotalProgress,
   sensorActive,
   onSensorToggle,
   autoMotionActive,
@@ -124,6 +138,16 @@ export default function PlayerView({
             />
           )}
 
+          {/* Phase indicator (when playing) */}
+          {isPlaying && (
+            <PhaseIndicator
+              phase={listenPhase}
+              totalProgress={listenTotalProgress}
+              currentBeatFreq={listenBeatFreq}
+              color={preset.color}
+            />
+          )}
+
           {/* Duration selector (pre-play only) */}
           {playerState === 'pre-play' && (
             <DurationSelector value={sessionDuration} onChange={onDurationChange} />
@@ -136,6 +160,16 @@ export default function PlayerView({
               onChange={onVolumeChange}
               color={preset.color}
               label="Volume"
+            />
+          )}
+
+          {/* Sleep timer */}
+          {(isPlaying || isPaused) && (
+            <SleepTimer
+              value={sleepTimer}
+              onChange={onSleepTimerChange}
+              remainingSeconds={sleepTimerRemaining}
+              color={preset.color}
             />
           )}
 

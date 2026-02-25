@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 interface BackgroundVisualiserProps {
@@ -17,12 +17,23 @@ export default function BackgroundVisualiser({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
   const reducedMotion = useReducedMotion();
+  const [pageVisible, setPageVisible] = useState(true);
+
+  // Track page visibility for battery savings
+  useEffect(() => {
+    const handler = () => setPageVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    // Don't animate when page is hidden (battery saving)
+    if (!pageVisible) return;
 
     function resize() {
       const dpr = window.devicePixelRatio || 1;
@@ -105,7 +116,7 @@ export default function BackgroundVisualiser({
       cancelAnimationFrame(animRef.current);
       window.removeEventListener('resize', resize);
     };
-  }, [beatFrequency, isPlaying, color, reducedMotion]);
+  }, [beatFrequency, isPlaying, color, reducedMotion, pageVisible]);
 
   return (
     <canvas

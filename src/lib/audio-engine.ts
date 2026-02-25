@@ -568,6 +568,48 @@ export class AudioEngine {
   }
 
   // ═══════════════════════════════════════════════
+  // SLEEP TIMER
+  // ═══════════════════════════════════════════════
+
+  /** Stop immediately with no additional fade (volume is already at 0 from sleep fade). */
+  stopSilent(): void {
+    if (this._advancedMode) {
+      this.stopAdvancedImmediate();
+    } else {
+      this.stopImmediate();
+    }
+  }
+
+  /** Gentle singing bowl chime — bypasses master gain (which may be at 0). */
+  async playSoftCompletionChime(): Promise<void> {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    // Singing bowl: warm fundamental + soft octave
+    const tones = [
+      { freq: 528, vol: 0.04 },
+      { freq: 1056, vol: 0.015 },
+    ];
+
+    for (const tone of tones) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = tone.freq;
+
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      gain.gain.setTargetAtTime(tone.vol, now, 0.05);
+      gain.gain.setTargetAtTime(0, now + 1.2, 0.3);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(now + 2.5);
+    }
+  }
+
+  // ═══════════════════════════════════════════════
   // ADVANCED MODE: PREVIEW & MULTI-LAYER
   // ═══════════════════════════════════════════════
 
@@ -1072,7 +1114,17 @@ export class AudioEngine {
     };
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') handleResume();
+      if (document.visibilityState === 'visible') {
+        handleResume();
+      } else if (document.visibilityState === 'hidden') {
+        // Proactively resume AudioContext when going to background
+        // to prevent the browser from suspending it
+        if (this._isPlaying && !this._isPaused && this.ctx) {
+          if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
+            this.ctx.resume().catch(() => {});
+          }
+        }
+      }
     });
     window.addEventListener('focus', handleResume);
   }

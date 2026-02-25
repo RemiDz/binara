@@ -31,6 +31,8 @@ import { AdvancedTimelineRunner } from '@/lib/advanced-timeline';
 import { getSharedSessionFromURL } from '@/lib/sharing';
 import { getMediaArtwork } from '@/lib/media-artwork';
 import { trackEvent } from '@/lib/analytics';
+import { VOLUME_HARD_CAP } from '@/lib/constants';
+import { getEaseInStartFreq, getSessionPhaseInfo } from '@/lib/session-phases';
 import type { MixConfig, AdvancedSessionConfig } from '@/types';
 
 export default function App() {
@@ -57,6 +59,20 @@ export default function App() {
   const autoMotionEngineRef = useRef<AutoMotionEngine | null>(null);
   const autoMotionRafRef = useRef<number>(0);
   const [autoMotionIntensity, setAutoMotionIntensity] = useState(50);
+
+  // Sleep timer state (Listen mode)
+  const [sleepTimer, setSleepTimer] = useState<number | null>(null);
+  const sleepTimerRef = useRef<number | null>(null);
+  sleepTimerRef.current = sleepTimer;
+  const sleepFadeStartedRef = useRef(false);
+  const volumeRef = useRef(state.volume);
+  volumeRef.current = state.volume;
+
+  // Session phase tracking (Listen mode)
+  const [listenPhase, setListenPhase] = useState<'easeIn' | 'deep' | 'easeOut'>('easeIn');
+  const [listenBeatFreq, setListenBeatFreq] = useState(0);
+  const [listenTotalProgress, setListenTotalProgress] = useState(0);
+  const currentBeatFreqRef = useRef(0);
 
   // Check onboarding status on mount
   useEffect(() => {
@@ -111,32 +127,99 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Initialize sleep timer from localStorage/defaults when preset changes
+  const activePresetId = state.activePreset?.id ?? null;
+  useEffect(() => {
+    if (!state.activePreset) {
+      setSleepTimer(null);
+      sleepFadeStartedRef.current = false;
+      return;
+    }
+    const category = state.activePreset.category;
+    const saved = localStorage.getItem(`binara_timer_${category}`);
+    if (saved !== null) {
+      setSleepTimer(parseInt(saved, 10));
+    } else if (category === 'sleep') {
+      setSleepTimer(30);
+    } else {
+      setSleepTimer(null);
+    }
+    sleepFadeStartedRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePresetId]);
+
   // Session timer: track elapsed time via polling (Listen mode)
   useEffect(() => {
-    if (state.isPlaying && !state.isPaused && !state.showMixPlayer) {
+    if (state.isPlaying && !state.isPaused && !state.showMixPlayer && !state.showAdvancedPlayer) {
       sessionTimerRef.current = setInterval(() => {
         const elapsed = audio.getElapsedTime();
         dispatch({ type: 'SET_ELAPSED_TIME', payload: elapsed });
 
-        // Check session completion
+        // Sleep timer check (takes priority over normal completion)
+        const timer = sleepTimerRef.current;
+        if (timer !== null) {
+          const timerEndSecs = timer * 60;
+          const fadeStartSecs = Math.max(0, timerEndSecs - 180);
+
+          if (elapsed >= timerEndSecs) {
+            handleSleepTimerComplete();
+            return;
+          }
+
+          if (elapsed >= fadeStartSecs) {
+            const fadeDuration = timerEndSecs - fadeStartSecs;
+            const fadeElapsed = elapsed - fadeStartSecs;
+            const fadeProgress = Math.min(fadeElapsed / fadeDuration, 1);
+            const baseVolume = (volumeRef.current / 100) * VOLUME_HARD_CAP;
+            const fadedVolume = baseVolume * (1 - fadeProgress);
+            audio.getEngine().setMasterVolume(fadedVolume);
+            sleepFadeStartedRef.current = true;
+          }
+
+          return; // Sleep timer active — skip normal completion check
+        }
+
+        // Normal session completion (no sleep timer)
         const durationSecs = state.sessionDuration * 60;
         if (elapsed >= durationSecs) {
           handleSessionComplete();
+          return;
+        }
+
+        // Phase tracking — calculate current phase and update oscillator frequency
+        const preset = state.activePreset;
+        if (preset) {
+          const timerVal = sleepTimerRef.current;
+          const effectiveSecs = (timerVal !== null ? timerVal : state.sessionDuration) * 60;
+          const isSleep = preset.category === 'sleep';
+          const startFreq = getEaseInStartFreq(preset.brainwaveState);
+
+          const phaseInfo = getSessionPhaseInfo(
+            elapsed, effectiveSecs, preset.beatFreq, startFreq, isSleep,
+          );
+
+          setListenPhase(phaseInfo.phase);
+          setListenBeatFreq(phaseInfo.currentBeatFreq);
+          setListenTotalProgress(phaseInfo.totalProgress);
+          currentBeatFreqRef.current = phaseInfo.currentBeatFreq;
+
+          // Update oscillator frequency (setTargetAtTime handles smooth transitions)
+          audio.setFrequency(preset.carrierFreq, preset.carrierFreq + phaseInfo.currentBeatFreq);
         }
       }, 1000);
-    } else if (!state.showMixPlayer) {
+    } else if (!state.showMixPlayer && !state.showAdvancedPlayer) {
       if (sessionTimerRef.current) {
         clearInterval(sessionTimerRef.current);
         sessionTimerRef.current = null;
       }
     }
     return () => {
-      if (sessionTimerRef.current && !state.showMixPlayer) {
+      if (sessionTimerRef.current && !state.showMixPlayer && !state.showAdvancedPlayer) {
         clearInterval(sessionTimerRef.current);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.isPlaying, state.isPaused, state.sessionDuration, state.showMixPlayer]);
+  }, [state.isPlaying, state.isPaused, state.sessionDuration, state.showMixPlayer, state.showAdvancedPlayer]);
 
   // Mix mode timer: track elapsed time + run timeline
   useEffect(() => {
@@ -188,7 +271,8 @@ export default function App() {
     audio.setChannelBalance(0);
     if (state.activePreset) {
       const base = state.activePreset.carrierFreq;
-      audio.setFrequency(base, base + state.activePreset.beatFreq);
+      const beatFreq = currentBeatFreqRef.current || state.activePreset.beatFreq;
+      audio.setFrequency(base, base + beatFreq);
     }
     if (overtoneActiveRef.current) {
       audio.removeOvertoneLayer();
@@ -211,7 +295,8 @@ export default function App() {
     audio.setChannelBalance(0);
     if (state.activePreset) {
       const base = state.activePreset.carrierFreq;
-      audio.setFrequency(base, base + state.activePreset.beatFreq);
+      const beatFreq = currentBeatFreqRef.current || state.activePreset.beatFreq;
+      audio.setFrequency(base, base + beatFreq);
     }
     setListenAutoMotionActive(false);
   }, [audio, state.activePreset]);
@@ -248,10 +333,11 @@ export default function App() {
       const balance = Math.max(-1, Math.min(1, s.roll / 45));
       audio.setChannelBalance(balance);
 
-      // 2. Carrier freq shift from pitch (same formula as sensor loop)
+      // 2. Carrier freq shift from pitch (use phase-derived beat freq)
       const freqShift = (Math.max(-30, Math.min(30, s.pitch)) / 30) * 5;
       const base = preset.carrierFreq;
-      audio.setFrequency(base + freqShift, base + preset.beatFreq + freqShift);
+      const beatFreq = currentBeatFreqRef.current || preset.beatFreq;
+      audio.setFrequency(base + freqShift, base + beatFreq + freqShift);
 
       // Deliberately skip stillness/overtone logic (simulation always moves)
 
@@ -303,10 +389,11 @@ export default function App() {
       const balance = Math.max(-1, Math.min(1, s.roll / 45));
       audio.setChannelBalance(balance);
 
-      // 2. Carrier freq shift from pitch (forward/back tilt)
+      // 2. Carrier freq shift from pitch (use phase-derived beat freq)
       const freqShift = (Math.max(-30, Math.min(30, s.pitch)) / 30) * 5;
       const base = preset.carrierFreq;
-      audio.setFrequency(base + freqShift, base + preset.beatFreq + freqShift);
+      const beatFreq = currentBeatFreqRef.current || preset.beatFreq;
+      audio.setFrequency(base + freqShift, base + beatFreq + freqShift);
 
       // 3. Stillness → overtone layer
       if (s.isStill) {
@@ -338,25 +425,84 @@ export default function App() {
     localStorage.setItem('binara_sessions_count', String(count + 1));
     stopListenSensors();
     stopListenAutoMotion();
+    currentBeatFreqRef.current = 0;
+    sleepFadeStartedRef.current = false;
     audio.stopWithLongFade();
     audio.stopAllAmbientLayers();
     await audio.playCompletionChime();
     dispatch({ type: 'COMPLETE_SESSION' });
   }, [audio, dispatch, state.sessionDuration, state.activePreset, stopListenSensors, stopListenAutoMotion]);
 
+  const handleSleepTimerComplete = useCallback(async () => {
+    const timerVal = sleepTimerRef.current;
+    trackEvent('Session Complete', { mode: 'easy', trigger: 'sleep-timer', duration: timerVal ?? 0, preset: state.activePreset?.name ?? '' });
+    const count = parseInt(localStorage.getItem('binara_sessions_count') || '0');
+    localStorage.setItem('binara_sessions_count', String(count + 1));
+    stopListenSensors();
+    stopListenAutoMotion();
+
+    const isSleepPreset = state.activePreset?.category === 'sleep';
+    const engine = audio.getEngine();
+
+    // Stop silently (volume is already at 0 from fade)
+    engine.stopSilent();
+
+    // Play soft chime for non-sleep presets
+    if (!isSleepPreset) {
+      await engine.playSoftCompletionChime();
+    }
+
+    sleepFadeStartedRef.current = false;
+    dispatch({ type: 'COMPLETE_SESSION' });
+  }, [audio, dispatch, state.activePreset, stopListenSensors, stopListenAutoMotion]);
+
+  const handleSleepTimerChange = useCallback((newValue: number | null) => {
+    const wasInFade = sleepFadeStartedRef.current;
+
+    setSleepTimer(newValue);
+    sleepFadeStartedRef.current = false;
+
+    // Save per-category memory
+    if (state.activePreset) {
+      const key = `binara_timer_${state.activePreset.category}`;
+      if (newValue !== null) {
+        localStorage.setItem(key, String(newValue));
+      } else {
+        localStorage.removeItem(key);
+      }
+    }
+
+    // If was fading, restore volume
+    if (wasInFade && state.isPlaying) {
+      const vol = (state.volume / 100) * VOLUME_HARD_CAP;
+      audio.getEngine().setMasterVolume(vol);
+    }
+  }, [state.activePreset, state.volume, state.isPlaying, audio]);
+
   const handlePlay = useCallback(async () => {
     if (!state.activePreset) return;
     const preset = state.activePreset;
     trackEvent('Session Start', { mode: 'easy' });
+
+    // Start at ease-in frequency (session phases ramp to target)
+    const startFreq = getEaseInStartFreq(preset.brainwaveState);
+
     await audio.play({
       carrierFreqLeft: preset.carrierFreq,
-      carrierFreqRight: preset.carrierFreq + preset.beatFreq,
+      carrierFreqRight: preset.carrierFreq + startFreq,
       masterVolume: state.volume / 100 * 0.3,
       waveform: 'sine',
       fadeInDuration: preset.fadeIn,
       fadeOutDuration: preset.fadeOut,
     });
     audio.setVolume(state.volume);
+
+    // Reset phase state
+    setListenPhase('easeIn');
+    setListenBeatFreq(startFreq);
+    setListenTotalProgress(0);
+    currentBeatFreqRef.current = startFreq;
+
     dispatch({ type: 'SET_IS_PLAYING', payload: true });
     dispatch({ type: 'SET_IS_PAUSED', payload: false });
     dispatch({ type: 'SET_ELAPSED_TIME', payload: 0 });
@@ -367,6 +513,8 @@ export default function App() {
     trackEvent('Session Abandon', { mode: 'easy', elapsed: state.elapsedTime, total: state.sessionDuration * 60 });
     stopListenSensors();
     stopListenAutoMotion();
+    sleepFadeStartedRef.current = false;
+    currentBeatFreqRef.current = 0;
     audio.stop();
     audio.stopAllAmbientLayers();
     setTimeout(() => {
@@ -743,8 +891,30 @@ export default function App() {
       // Resume AudioContext if browser suspended it
       audio.resumeFromBackground();
 
-      // Check if any session completed while in background
       const elapsed = audio.getElapsedTime();
+
+      // Check sleep timer (Listen mode) — takes priority
+      const timer = sleepTimerRef.current;
+      if (timer !== null && state.showPlayer) {
+        const timerEndSecs = timer * 60;
+        if (elapsed >= timerEndSecs) {
+          handleSleepTimerComplete();
+          return;
+        }
+        // Catch up fade volume
+        const fadeStartSecs = Math.max(0, timerEndSecs - 180);
+        if (elapsed >= fadeStartSecs) {
+          const fadeDuration = timerEndSecs - fadeStartSecs;
+          const fadeElapsed = elapsed - fadeStartSecs;
+          const fadeProgress = Math.min(fadeElapsed / fadeDuration, 1);
+          const baseVolume = (volumeRef.current / 100) * VOLUME_HARD_CAP;
+          const fadedVolume = baseVolume * (1 - fadeProgress);
+          audio.getEngine().setMasterVolume(fadedVolume);
+          sleepFadeStartedRef.current = true;
+        }
+      }
+
+      // Check if any session completed while in background
       const durationSecs = state.sessionDuration * 60;
 
       if (elapsed >= durationSecs) {
@@ -752,7 +922,7 @@ export default function App() {
           handleAdvancedSessionComplete();
         } else if (state.showMixPlayer) {
           handleMixSessionComplete();
-        } else if (state.showPlayer) {
+        } else if (state.showPlayer && timer === null) {
           handleSessionComplete();
         }
         return;
@@ -1029,7 +1199,7 @@ export default function App() {
           isPlaying={state.isPlaying}
           isPaused={state.isPaused}
           elapsedTime={state.elapsedTime}
-          sessionDuration={state.sessionDuration}
+          sessionDuration={sleepTimer !== null && state.isPlaying ? sleepTimer : state.sessionDuration}
           volume={state.volume}
           ambientLayers={state.ambientLayers}
           onBack={handleBackFromPlayer}
@@ -1043,6 +1213,16 @@ export default function App() {
           onUpdateLayerVolume={handleUpdateLayerVolume}
           onRemoveLayer={handleRemoveLayer}
           onClearAmbient={handleClearAmbient}
+          sleepTimer={sleepTimer}
+          onSleepTimerChange={handleSleepTimerChange}
+          sleepTimerRemaining={
+            sleepTimer !== null && state.isPlaying
+              ? Math.max(0, sleepTimer * 60 - state.elapsedTime)
+              : null
+          }
+          listenPhase={listenPhase}
+          listenBeatFreq={listenBeatFreq}
+          listenTotalProgress={listenTotalProgress}
           sensorActive={listenSensorActive}
           onSensorToggle={handleListenSensorToggle}
           autoMotionActive={listenAutoMotionActive}
