@@ -34,11 +34,19 @@ export const CATEGORIES: Category[] = [
 ];
 
 export const AMBIENT_OPTIONS: AmbientOption[] = [
-  { id: 'rain', label: 'Rain', icon: '\u{1F327}\u{FE0F}' },
+  // Sample-based nature sounds
+  { id: 'rain', label: 'Rain & Thunder', icon: '\u{1F327}\u{FE0F}' },
   { id: 'ocean', label: 'Ocean', icon: '\u{1F30A}' },
-  { id: 'bowls', label: 'Bowls', icon: '\u{1F3B5}' },
   { id: 'forest', label: 'Forest', icon: '\u{1F343}' },
+  { id: 'forest-singing', label: 'Forest Singing', icon: '\u{1F333}' },
+  { id: 'morning-birds', label: 'Morning Birds', icon: '\u{1F426}' },
+  { id: 'wild-birds', label: 'Wild Birds', icon: '\u{1F985}' },
+  { id: 'wind', label: 'Wind', icon: '\u{1F32C}\u{FE0F}' },
   { id: 'fireplace', label: 'Fire', icon: '\u{1F525}' },
+  { id: 'stream', label: 'Stream', icon: '\u{1F4A7}' },
+  { id: 'night', label: 'Night Crickets', icon: '\u{1F31B}' },
+  // Synthesised layers
+  { id: 'bowls', label: 'Bowls', icon: '\u{1F3B5}' },
   { id: 'white', label: 'White', icon: '\u{2601}\u{FE0F}' },
   { id: 'pink', label: 'Pink', icon: '\u{1F338}' },
   { id: 'brown', label: 'Brown', icon: '\u{1F7EB}' },
