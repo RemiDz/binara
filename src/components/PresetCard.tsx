@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { trackEvent } from '@/lib/analytics';
-import { useProContext } from '@/context/ProContext';
 import FrequencyRing from './listen/FrequencyRing';
 import WaveformSignature from './listen/WaveformSignature';
 import { WAVE_STATES } from './listen/wave-states';
@@ -16,7 +15,6 @@ interface PresetCardProps {
   previewProgress: number;
   onPreviewToggle: (preset: Preset) => void;
   onStopPreview: () => void;
-  onSensorBadgeTap?: () => void;
 }
 
 export default function PresetCard({
@@ -27,29 +25,11 @@ export default function PresetCard({
   previewProgress,
   onPreviewToggle,
   onStopPreview,
-  onSensorBadgeTap,
 }: PresetCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
-  const [hasSensors, setHasSensors] = useState(false);
-  const { isPro } = useProContext();
   const waveState = WAVE_STATES[preset.brainwaveState];
   const isPreviewing = previewingId === preset.id;
-
-  // Check sensor availability on mount (client-only)
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setHasSensors('DeviceOrientationEvent' in window || 'DeviceMotionEvent' in window);
-    }
-  }, []);
-
-  const handleSensorBadgeClick = (e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (!isPro && onSensorBadgeTap) {
-      onSensorBadgeTap();
-    }
-  };
 
   const handlePlayClick = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
@@ -215,40 +195,6 @@ export default function PresetCard({
           }}>
             {preset.defaultDuration} min
           </span>
-
-          {/* Sensor badge — mobile only */}
-          {hasSensors && (
-            <button
-              onClick={handleSensorBadgeClick}
-              onTouchEnd={(e) => e.stopPropagation()}
-              aria-label={isPro ? 'Motion sensors available' : 'Unlock motion sensors'}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 3,
-                padding: '2px 6px',
-                borderRadius: 8,
-                border: `1px solid ${(isHovered || isPreviewing) ? `${waveState.color}25` : 'rgba(255,255,255,0.06)'}`,
-                background: (isHovered || isPreviewing) ? `${waveState.color}08` : 'transparent',
-                cursor: isPro ? 'default' : 'pointer',
-                transition: 'all 0.3s ease',
-                outline: 'none',
-              }}
-            >
-              {/* Phone icon */}
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={(isHovered || isPreviewing) ? waveState.color : 'rgba(255,255,255,0.25)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.3s ease' }}>
-                <rect x="5" y="2" width="14" height="20" rx="3" ry="3" />
-                <line x1="12" y1="18" x2="12" y2="18.01" />
-              </svg>
-              {/* Lock icon for free users */}
-              {!isPro && (
-                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-              )}
-            </button>
-          )}
 
           {/* Play / Pause button */}
           <button

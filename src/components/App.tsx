@@ -21,7 +21,6 @@ import MixBuilder from './mix/MixBuilder';
 import MixPlayer from './mix/MixPlayer';
 import AdvancedBuilder from './advanced/AdvancedBuilder';
 import AdvancedPlayer from './advanced/AdvancedPlayer';
-import SensorUpsell from './SensorUpsell';
 import ProUpgrade from './ProUpgrade';
 import { SensorEngine } from '@/lib/sensor-engine';
 import { getBrainwaveState } from '@/lib/brainwave-states';
@@ -42,9 +41,10 @@ export default function App() {
   const timelineRunnerRef = useRef<TimelineRunner | null>(null);
   const advancedTimelineRunnerRef = useRef<AdvancedTimelineRunner | null>(null);
 
-  // Sensor modulation state (Listen mode)
-  const [sensorUpsellOpen, setSensorUpsellOpen] = useState(false);
+  // PRO upgrade modal (triggered by inline upgrade links)
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
+
+  // Sensor modulation state (Listen mode)
   const [listenSensorActive, setListenSensorActive] = useState(false);
   const sensorEngineRef = useRef<SensorEngine | null>(null);
   const sensorRafRef = useRef<number>(0);
@@ -58,6 +58,13 @@ export default function App() {
       dispatch({ type: 'SET_ONBOARDING_COMPLETE', payload: true });
     }
   }, [dispatch]);
+
+  // Listen for inline "Upgrade to PRO" link clicks (from SensorToggle/SensorControl)
+  useEffect(() => {
+    const handler = () => setProUpgradeOpen(true);
+    window.addEventListener('binara:open-pro-upgrade', handler);
+    return () => window.removeEventListener('binara:open-pro-upgrade', handler);
+  }, []);
 
   // URL-based licence activation (?licence_key=XXX)
   useEffect(() => {
@@ -965,7 +972,7 @@ export default function App() {
           <>
             <CategoryFilter />
             <HeadphoneBanner />
-            <PresetGrid onSensorBadgeTap={() => setSensorUpsellOpen(true)} />
+            <PresetGrid />
           </>
         )}
 
@@ -1013,14 +1020,6 @@ export default function App() {
         )}
         <Toast />
         <InstallBanner />
-        <SensorUpsell
-          isOpen={sensorUpsellOpen}
-          onClose={() => setSensorUpsellOpen(false)}
-          onUpgrade={() => {
-            setSensorUpsellOpen(false);
-            setProUpgradeOpen(true);
-          }}
-        />
         <ProUpgrade
           isOpen={proUpgradeOpen}
           onClose={() => setProUpgradeOpen(false)}
