@@ -494,13 +494,6 @@ export class AudioEngine {
       }
     }
 
-    // Start silent audio element FIRST to activate the browser's audio session
-    // This must happen before creating Web Audio nodes to avoid iOS audio session conflicts
-    this.startSilentAudioElement();
-
-    // Small delay to let the audio session activate
-    await new Promise(resolve => setTimeout(resolve, 100));
-
     // Set up beat layers
     await this.playAdvanced(config.layers);
 
@@ -526,6 +519,20 @@ export class AudioEngine {
     }
 
     this._isPreviewMode = true;
+
+    // Diagnostic — remove after confirming fix
+    console.log('[Binara Audio Debug]', {
+      ctxState: this.ctx?.state,
+      ctxTime: this.ctx?.currentTime,
+      isPlaying: this._isPlaying,
+      advancedMode: this._advancedMode,
+      previewMode: this._isPreviewMode,
+      beatLayerCount: this.beatLayers.size,
+      beatSumGainConnected: !!this.beatSumGain,
+      compressorConnected: !!this.compressor,
+      masterGainValue: this.masterGain?.gain.value,
+      masterGainConnected: !!this.masterGain,
+    });
   }
 
   stopPreview(): void {
@@ -556,17 +563,11 @@ export class AudioEngine {
       this.stopImmediate();
     }
 
-    // Start keepalive and silent audio BEFORE creating oscillators
-    // This activates the browser audio session first
-    this.startKeepAlive();
-    this.startSilentAudioElement();
-
     const ctx = this.ctx!;
-    const now = ctx.currentTime;
 
     // Create sum gain for all beat layers
     this.beatSumGain = ctx.createGain();
-    this.beatSumGain.gain.setValueAtTime(1, now);
+    this.beatSumGain.gain.value = 1;
     this.beatSumGain.connect(this.compressor!);
 
     // Create each beat layer
@@ -577,42 +578,46 @@ export class AudioEngine {
     this._advancedMode = true;
     this._isPlaying = true;
     this._isPaused = false;
-    this.startTime = now;
+    this.startTime = ctx.currentTime;
     this.pauseOffset = 0;
     this.wallStartTime = Date.now();
     this.wallPauseOffset = 0;
+
+    this.startKeepAlive();
+    this.startSilentAudioElement();
   }
 
   private createBeatLayerNodes(layer: BeatLayer): void {
     const ctx = this.ctx!;
-    const now = ctx.currentTime;
     const vol = layer.volume / 100;
     const width = this._stereoWidth / 100;
 
     const oscL = ctx.createOscillator();
     oscL.type = layer.waveform;
-    oscL.frequency.setValueAtTime(layer.carrierFreq, now);
+    oscL.frequency.setValueAtTime(layer.carrierFreq, ctx.currentTime);
 
     const gainL = ctx.createGain();
-    gainL.gain.setValueAtTime(0, now);
-    gainL.gain.linearRampToValueAtTime(0.5, now + 2);
+    // Start at a small non-zero value and ramp up using setTargetAtTime
+    // (more reliable than linearRampToValueAtTime across browsers)
+    gainL.gain.value = 0.001;
+    gainL.gain.setTargetAtTime(0.5, ctx.currentTime, 0.5);
 
     const panL = ctx.createStereoPanner();
-    panL.pan.setValueAtTime(-width, now);
+    panL.pan.setValueAtTime(-width, ctx.currentTime);
 
     const oscR = ctx.createOscillator();
     oscR.type = layer.waveform;
-    oscR.frequency.setValueAtTime(layer.carrierFreq + layer.beatFreq, now);
+    oscR.frequency.setValueAtTime(layer.carrierFreq + layer.beatFreq, ctx.currentTime);
 
     const gainR = ctx.createGain();
-    gainR.gain.setValueAtTime(0, now);
-    gainR.gain.linearRampToValueAtTime(0.5, now + 2);
+    gainR.gain.value = 0.001;
+    gainR.gain.setTargetAtTime(0.5, ctx.currentTime, 0.5);
 
     const panR = ctx.createStereoPanner();
-    panR.pan.setValueAtTime(width, now);
+    panR.pan.setValueAtTime(width, ctx.currentTime);
 
     const layerGain = ctx.createGain();
-    layerGain.gain.setValueAtTime(vol, now);
+    layerGain.gain.value = vol;
 
     // Wire: osc → gain → pan → layerGain → beatSumGain
     oscL.connect(gainL);
@@ -625,8 +630,8 @@ export class AudioEngine {
 
     layerGain.connect(this.beatSumGain!);
 
-    oscL.start(now);
-    oscR.start(now);
+    oscL.start();
+    oscR.start();
 
     this.beatLayers.set(layer.id, { oscL, oscR, gainL, gainR, panL, panR, layerGain });
   }
