@@ -267,8 +267,8 @@ export class AudioEngine {
   setCarrierFrequency(left: number, right: number): void {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
-    this.carrierLeft?.frequency.linearRampToValueAtTime(left, now + 0.05);
-    this.carrierRight?.frequency.linearRampToValueAtTime(right, now + 0.05);
+    this.carrierLeft?.frequency.setTargetAtTime(left, now, 0.05);
+    this.carrierRight?.frequency.setTargetAtTime(right, now, 0.05);
   }
 
   rampCarrierFrequency(targetLeft: number, targetRight: number, durationSeconds: number): void {

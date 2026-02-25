@@ -444,6 +444,27 @@ export default function App() {
     dispatch({ type: 'SET_TOAST', payload: message });
   }, [dispatch]);
 
+  // ─── Sensor → Audio callbacks ───
+
+  const handleMixSensorFrequencyChange = useCallback((freq: number) => {
+    if (!state.mixConfig) return;
+    const carrier = getCarrierTone(state.mixConfig.carrierId);
+    if (!carrier) return;
+    audio.setFrequency(carrier.frequency, carrier.frequency + freq);
+  }, [audio, state.mixConfig]);
+
+  const handleAdvancedSensorFrequencyChange = useCallback((freq: number) => {
+    if (!state.advancedConfig) return;
+    // Update all beat layers with the sensor-driven beat frequency
+    for (const layer of state.advancedConfig.layers) {
+      audio.setBeatLayerFrequency(layer.id, layer.carrierFreq, freq);
+    }
+  }, [audio, state.advancedConfig]);
+
+  const handleAdvancedSensorStereoWidthChange = useCallback((width: number) => {
+    audio.setStereoWidth(width);
+  }, [audio]);
+
   // Advanced mode timer
   useEffect(() => {
     if (state.isPlaying && !state.isPaused && state.showAdvancedPlayer) {
@@ -746,6 +767,8 @@ export default function App() {
           onResume={handleResume}
           onStop={handleStopAdvancedSession}
           onVolumeChange={handleVolumeChange}
+          onSensorFrequencyChange={handleAdvancedSensorFrequencyChange}
+          onSensorStereoWidthChange={handleAdvancedSensorStereoWidthChange}
         />
       </>
     );
@@ -771,6 +794,7 @@ export default function App() {
           onResume={handleResume}
           onStop={handleStopMixSession}
           onVolumeChange={handleVolumeChange}
+          onSensorFrequencyChange={handleMixSensorFrequencyChange}
         />
       </>
     );
