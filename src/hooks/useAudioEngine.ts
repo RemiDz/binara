@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { AudioEngine } from '@/lib/audio-engine';
-import type { AudioEngineConfig, BeatLayer, FilterConfig, LFOConfig, IsochronicConfig } from '@/types';
+import type { AudioEngineConfig, BeatLayer, FilterConfig, LFOConfig, IsochronicConfig, AdvancedSessionConfig } from '@/types';
 import { VOLUME_HARD_CAP } from '@/lib/constants';
 
 export interface UseAudioEngineReturn {
@@ -39,6 +39,10 @@ export interface UseAudioEngineReturn {
     onResume?: () => void;
     onStop?: () => void;
   }) => void;
+  // Preview mode (live audio in builder)
+  startPreview: (config: AdvancedSessionConfig) => Promise<void>;
+  stopPreview: () => void;
+  isPreviewMode: boolean;
   // Advanced mode
   playAdvanced: (layers: BeatLayer[]) => Promise<void>;
   stopAdvanced: () => void;
@@ -223,6 +227,27 @@ export function useAudioEngine(): UseAudioEngineReturn {
     }, 2000);
   }, [stopPolling]);
 
+  // ─── Preview mode wrappers ───
+
+  const startPreview = useCallback(async (config: AdvancedSessionConfig) => {
+    const engine = getEngine();
+    if (!engine.isInitialized) await engine.init();
+    await engine.startPreview(config);
+    setIsPlaying(true);
+    setIsPaused(false);
+    setIsInitialized(true);
+  }, [getEngine]);
+
+  const stopPreview = useCallback(() => {
+    engineRef.current?.stopPreview();
+    setTimeout(() => {
+      setIsPlaying(false);
+      setIsPaused(false);
+    }, 2000);
+  }, []);
+
+  const isPreviewMode = engineRef.current?.isPreviewMode ?? false;
+
   const setBeatLayerFrequency = useCallback((id: string, carrier: number, beat: number) => {
     engineRef.current?.setBeatLayerFrequency(id, carrier, beat);
   }, []);
@@ -345,6 +370,10 @@ export function useAudioEngine(): UseAudioEngineReturn {
     getEngine,
     resumeFromBackground,
     setupMediaSession,
+    // Preview mode
+    startPreview,
+    stopPreview,
+    isPreviewMode,
     // Advanced mode
     playAdvanced,
     stopAdvanced,

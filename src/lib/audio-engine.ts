@@ -1,4 +1,4 @@
-import type { AudioEngineConfig, AmbientLayerConfig, BeatLayer, FilterConfig, LFOConfig, IsochronicConfig } from '@/types';
+import type { AudioEngineConfig, AmbientLayerConfig, BeatLayer, FilterConfig, LFOConfig, IsochronicConfig, AdvancedSessionConfig } from '@/types';
 import { VOLUME_HARD_CAP } from './constants';
 import { createAmbientSynth, type AmbientSynth } from './ambient-synth';
 
@@ -69,6 +69,9 @@ export class AudioEngine {
   private isoGain: GainNode | null = null;
   private isoPulseTimer: ReturnType<typeof setInterval> | null = null;
   private nextPulseTime = 0;
+
+  // Preview mode (live audio in builder)
+  private _isPreviewMode = false;
 
   // Stereo subsystem
   private masterPan: StereoPannerNode | null = null;
@@ -431,6 +434,65 @@ export class AudioEngine {
     return this._advancedMode;
   }
 
+  get isPreviewMode(): boolean {
+    return this._isPreviewMode;
+  }
+
+  // ─── Preview mode (live audio in builder) ───
+
+  async startPreview(config: AdvancedSessionConfig): Promise<void> {
+    if (!this.ctx || !this.compressor) {
+      await this.init();
+    }
+
+    // Stop any existing playback
+    if (this._isPlaying) {
+      if (this._advancedMode) {
+        this.stopAdvancedImmediate();
+      } else {
+        this.stopImmediate();
+      }
+    }
+
+    // Set up beat layers (same as playAdvanced)
+    await this.playAdvanced(config.layers);
+
+    // Enable subsystems from config
+    if (config.filter.enabled) {
+      this.enableFilter(config.filter);
+    }
+    if (config.stereo.enabled) {
+      this.setStereoWidth(config.stereo.width);
+      this.setStereoOffset(config.stereo.pan);
+      if (config.stereo.crossfeed > 0) {
+        this.setCrossfeed(config.stereo.crossfeed);
+      }
+      if (config.stereo.rotation) {
+        this.enableSpatialRotation(config.stereo.rotationSpeed);
+      }
+    }
+    if (config.lfo.enabled) {
+      this.enableLFO(config.lfo);
+    }
+    if (config.isochronic.enabled) {
+      this.enableIsochronic(config.isochronic);
+    }
+
+    this._isPreviewMode = true;
+  }
+
+  stopPreview(): void {
+    this._isPreviewMode = false;
+    if (this._advancedMode) {
+      this.stopAdvanced();
+    }
+  }
+
+  transitionFromPreview(): void {
+    // Audio continues uninterrupted — just clear the preview flag
+    this._isPreviewMode = false;
+  }
+
   async playAdvanced(layers: BeatLayer[]): Promise<void> {
     if (!this.ctx || !this.compressor) {
       await this.init();
@@ -574,6 +636,7 @@ export class AudioEngine {
     this.stopAllAmbientLayersImmediate();
 
     this._advancedMode = false;
+    this._isPreviewMode = false;
     this._isPlaying = false;
     this._isPaused = false;
     this.pauseOffset = 0;

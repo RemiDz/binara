@@ -357,46 +357,66 @@ export default function App() {
 
   // ─── Advanced mode handlers ───
 
+  const previewActiveRef = useRef(false);
+
+  const handleStartPreview = useCallback(async (config: AdvancedSessionConfig) => {
+    await audio.startPreview(config);
+    previewActiveRef.current = true;
+  }, [audio]);
+
+  const handleStopPreview = useCallback(() => {
+    previewActiveRef.current = false;
+    audio.stopPreview();
+  }, [audio]);
+
   const handleStartAdvancedSession = useCallback(async (config: AdvancedSessionConfig) => {
     trackEvent('Session Start', { mode: 'advanced' });
-    // Start beat layers
-    await audio.playAdvanced(config.layers);
-    audio.setVolume(state.volume);
 
-    // Enable filter if configured
-    if (config.filter.enabled) {
-      audio.enableFilter(config.filter);
-    }
+    const engine = audio.getEngine();
 
-    // Enable stereo if configured
-    if (config.stereo.enabled) {
-      audio.setStereoWidth(config.stereo.width);
-      audio.setStereoOffset(config.stereo.pan);
-      if (config.stereo.crossfeed > 0) {
-        audio.setCrossfeed(config.stereo.crossfeed);
+    if (previewActiveRef.current) {
+      // Seamless transition from preview — audio continues uninterrupted
+      previewActiveRef.current = false;
+      engine.transitionFromPreview();
+    } else {
+      // Full audio startup (no preview was active)
+      await audio.playAdvanced(config.layers);
+      audio.setVolume(state.volume);
+
+      // Enable filter if configured
+      if (config.filter.enabled) {
+        audio.enableFilter(config.filter);
       }
-      if (config.stereo.rotation) {
-        audio.enableSpatialRotation(config.stereo.rotationSpeed);
+
+      // Enable stereo if configured
+      if (config.stereo.enabled) {
+        audio.setStereoWidth(config.stereo.width);
+        audio.setStereoOffset(config.stereo.pan);
+        if (config.stereo.crossfeed > 0) {
+          audio.setCrossfeed(config.stereo.crossfeed);
+        }
+        if (config.stereo.rotation) {
+          audio.enableSpatialRotation(config.stereo.rotationSpeed);
+        }
       }
-    }
 
-    // Enable LFO if configured
-    if (config.lfo.enabled) {
-      audio.enableLFO(config.lfo);
-    }
+      // Enable LFO if configured
+      if (config.lfo.enabled) {
+        audio.enableLFO(config.lfo);
+      }
 
-    // Enable isochronic if configured
-    if (config.isochronic.enabled) {
-      audio.enableIsochronic(config.isochronic);
-    }
+      // Enable isochronic if configured
+      if (config.isochronic.enabled) {
+        audio.enableIsochronic(config.isochronic);
+      }
 
-    // Start ambient layers
-    for (const layer of config.ambientLayers) {
-      audio.addAmbientLayer(layer.id, layer.volume);
+      // Start ambient layers
+      for (const layer of config.ambientLayers) {
+        audio.addAmbientLayer(layer.id, layer.volume);
+      }
     }
 
     // Create timeline runner
-    const engine = audio.getEngine();
     advancedTimelineRunnerRef.current = new AdvancedTimelineRunner(config, engine);
 
     dispatch({ type: 'START_ADVANCED_SESSION', payload: config });
@@ -861,8 +881,11 @@ export default function App() {
             <HeadphoneBanner />
             <AdvancedBuilder
               onStartSession={handleStartAdvancedSession}
+              onStartPreview={handleStartPreview}
+              onStopPreview={handleStopPreview}
               onPreviewTone={handlePreviewTone}
               onLimitReached={handleAdvancedLimitReached}
+              audio={audio}
             />
           </>
         )}
