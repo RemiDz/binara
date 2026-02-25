@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import { motion } from 'motion/react';
 
 interface PreviewBarProps {
@@ -66,21 +67,11 @@ export default function PreviewBar({
         </span>
       </div>
 
-      {/* Volume slider */}
-      <div className="flex-1 min-w-0">
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={1}
-          value={isMuted ? 0 : volume}
-          onChange={(e) => onVolumeChange(Number(e.target.value))}
-          className="w-full h-1 appearance-none rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#7986cb] [&::-webkit-slider-thumb]:-mt-1 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#7986cb] [&::-moz-range-thumb]:border-0"
-          style={{
-            background: `linear-gradient(to right, #7986cb ${isMuted ? 0 : volume}%, rgba(255,255,255,0.1) ${isMuted ? 0 : volume}%)`,
-          }}
-        />
-      </div>
+      {/* Volume slider (custom div-based for bulletproof thumb centring) */}
+      <PreviewVolumeSlider
+        value={isMuted ? 0 : volume}
+        onChange={onVolumeChange}
+      />
 
       {/* Mute button */}
       <button
@@ -121,6 +112,70 @@ export default function PreviewBar({
           <line x1="6" y1="6" x2="18" y2="18" />
         </svg>
       </button>
+    </div>
+  );
+}
+
+function PreviewVolumeSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+
+  const handleInteraction = (clientX: number) => {
+    if (!trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    onChange(Math.round(ratio * 100));
+  };
+
+  return (
+    <div
+      ref={trackRef}
+      style={{
+        position: 'relative',
+        height: 32,
+        display: 'flex',
+        alignItems: 'center',
+        cursor: 'pointer',
+        flex: 1,
+        minWidth: 0,
+        touchAction: 'none',
+      }}
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        handleInteraction(e.clientX);
+      }}
+      onPointerMove={(e) => {
+        if (e.buttons > 0) handleInteraction(e.clientX);
+      }}
+    >
+      {/* Track background */}
+      <div style={{
+        width: '100%',
+        height: 4,
+        background: 'rgba(255, 255, 255, 0.1)',
+        borderRadius: 2,
+        position: 'relative',
+      }}>
+        {/* Filled portion */}
+        <div style={{
+          width: `${value}%`,
+          height: '100%',
+          background: '#7986cb',
+          borderRadius: 2,
+        }} />
+        {/* Thumb — transform: translate(-50%, -50%) guarantees perfect centring */}
+        <div style={{
+          position: 'absolute',
+          left: `${value}%`,
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: 14,
+          height: 14,
+          borderRadius: '50%',
+          background: '#7986cb',
+          boxShadow: '0 0 6px rgba(121, 134, 203, 0.4)',
+          pointerEvents: 'none',
+        }} />
+      </div>
     </div>
   );
 }
