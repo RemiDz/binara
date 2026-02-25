@@ -4,13 +4,20 @@ import { motion } from 'motion/react';
 import { WAVE_STATES } from './listen/wave-states';
 import type { Preset } from '@/types';
 
+// Height of the MiniPlayer bar (content + progress + padding, excluding safe area)
+export const MINI_PLAYER_HEIGHT = 58;
+// Height of the PreviewBar (progress line + content + padding, excluding safe area)
+export const PREVIEW_BAR_HEIGHT = 54;
+
 interface PreviewBarProps {
   preset: Preset;
   progress: number;
   onStop: () => void;
+  /** Pixel offset from the bottom — used to stack above MiniPlayer */
+  bottomOffset?: number;
 }
 
-export default function PreviewBar({ preset, progress, onStop }: PreviewBarProps) {
+export default function PreviewBar({ preset, progress, onStop, bottomOffset = 0 }: PreviewBarProps) {
   const waveState = WAVE_STATES[preset.brainwaveState];
   const color = waveState.color;
   const remaining = Math.ceil(15 * (1 - progress));
@@ -21,8 +28,11 @@ export default function PreviewBar({ preset, progress, onStop }: PreviewBarProps
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 60, opacity: 0 }}
       transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-      className="fixed bottom-0 left-0 right-0 z-40"
-      style={{ paddingBottom: 'var(--safe-area-bottom)' }}
+      className="fixed left-0 right-0 z-41"
+      style={{
+        bottom: bottomOffset,
+        paddingBottom: bottomOffset === 0 ? 'var(--safe-area-bottom)' : 0,
+      }}
     >
       {/* Progress bar on top edge */}
       <div style={{ height: 2, background: 'rgba(255,255,255,0.04)' }}>
