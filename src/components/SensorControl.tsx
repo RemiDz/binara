@@ -139,19 +139,45 @@ export default function SensorControl({
               {sensors.active && (
                 <>
                   {/* 3D Phone orientation preview */}
-                  <div className="flex justify-center py-2">
+                  <div className="flex justify-center py-2" style={{ perspective: '400px' }}>
                     <div
-                      className="w-16 h-24 rounded-lg border flex items-end justify-center pb-1"
                       style={{
-                        borderColor: `${color}40`,
-                        background: `${color}08`,
-                        transform: `perspective(400px) rotateX(${-sensors.state.pitch * 0.3}deg) rotateY(${sensors.state.roll * 0.3}deg)`,
-                        transition: 'transform 0.1s',
+                        width: 60,
+                        height: 100,
+                        borderRadius: 12,
+                        border: `1.5px solid ${color}30`,
+                        background: `${color}06`,
+                        position: 'relative',
+                        transformStyle: 'preserve-3d',
+                        transform: `rotateX(${-sensors.state.pitch * 0.5}deg) rotateY(${sensors.state.roll * 0.5}deg)`,
+                        transition: 'transform 0.1s ease-out',
                       }}
                     >
+                      {/* Screen area */}
                       <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ background: `${color}60` }}
+                        style={{
+                          position: 'absolute',
+                          top: 10,
+                          left: 5,
+                          right: 5,
+                          bottom: 18,
+                          borderRadius: 4,
+                          border: `1px solid ${color}15`,
+                          background: `${color}08`,
+                        }}
+                      />
+                      {/* Home bar */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: 6,
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: 20,
+                          height: 2,
+                          borderRadius: 1,
+                          background: `${color}30`,
+                        }}
                       />
                     </div>
                   </div>

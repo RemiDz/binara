@@ -73,7 +73,7 @@ function generateStars(count: number): { x: number; y: number; size: number; opa
   return stars;
 }
 
-const STARS = generateStars(50);
+const STARS = generateStars(20);
 
 export default function PromoCard({ cardNumber, totalCards, accentColor, format, children }: PromoCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);

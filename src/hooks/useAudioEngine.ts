@@ -38,7 +38,7 @@ export interface UseAudioEngineReturn {
     onPause?: () => void;
     onResume?: () => void;
     onStop?: () => void;
-  }) => void;
+  }, artwork?: MediaImage[]) => void;
   // Preview mode (live audio in builder)
   startPreview: (config: AdvancedSessionConfig) => Promise<void>;
   stopPreview: () => void;
@@ -332,8 +332,8 @@ export function useAudioEngine(): UseAudioEngineReturn {
     onPause?: () => void;
     onResume?: () => void;
     onStop?: () => void;
-  }) => {
-    engineRef.current?.setupMediaSession(title, category, callbacks);
+  }, artwork?: MediaImage[]) => {
+    engineRef.current?.setupMediaSession(title, category, callbacks, artwork);
   }, []);
 
   useEffect(() => {

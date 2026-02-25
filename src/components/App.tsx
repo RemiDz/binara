@@ -26,6 +26,7 @@ import { getCarrierTone } from '@/lib/carrier-tones';
 import { buildTimeline, TimelineRunner } from '@/lib/session-timeline';
 import { AdvancedTimelineRunner } from '@/lib/advanced-timeline';
 import { getSharedSessionFromURL } from '@/lib/sharing';
+import { getMediaArtwork } from '@/lib/media-artwork';
 import { trackEvent } from '@/lib/analytics';
 import type { MixConfig, AdvancedSessionConfig } from '@/types';
 
@@ -588,6 +589,8 @@ export default function App() {
       category = 'Create Mode';
     }
 
+    const artwork = getMediaArtwork();
+
     audio.setupMediaSession(title, category, {
       onPause: () => {
         audio.pause().then(() => dispatch({ type: 'SET_IS_PAUSED', payload: true }));
@@ -604,7 +607,7 @@ export default function App() {
           handleStop();
         }
       },
-    });
+    }, artwork);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.isPlaying]);
 

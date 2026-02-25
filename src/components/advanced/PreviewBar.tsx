@@ -25,7 +25,7 @@ export default function PreviewBar({
     return (
       <button
         onClick={onEnable}
-        className="w-full py-3 rounded-xl text-xs font-[family-name:var(--font-inter)] font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
+        className="w-full mt-3 py-3 rounded-xl text-xs font-[family-name:var(--font-inter)] font-medium flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
         style={{
           background: 'rgba(121, 134, 203, 0.08)',
           border: '1px dashed rgba(121, 134, 203, 0.25)',
@@ -44,7 +44,7 @@ export default function PreviewBar({
 
   return (
     <div
-      className="w-full py-2.5 px-3 rounded-xl flex items-center gap-3"
+      className="w-full mt-3 py-2.5 px-3 rounded-xl flex items-center gap-3"
       style={{
         background: 'rgba(121, 134, 203, 0.08)',
         border: '1px solid rgba(121, 134, 203, 0.2)',
@@ -75,7 +75,7 @@ export default function PreviewBar({
           step={1}
           value={isMuted ? 0 : volume}
           onChange={(e) => onVolumeChange(Number(e.target.value))}
-          className="w-full h-1 appearance-none rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#7986cb]"
+          className="w-full h-1 appearance-none rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#7986cb] [&::-webkit-slider-thumb]:-mt-1 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#7986cb] [&::-moz-range-thumb]:border-0"
           style={{
             background: `linear-gradient(to right, #7986cb ${isMuted ? 0 : volume}%, rgba(255,255,255,0.1) ${isMuted ? 0 : volume}%)`,
           }}

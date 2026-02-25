@@ -1065,6 +1065,9 @@ export class AudioEngine {
     this.silentAudio = new Audio(url);
     this.silentAudio.loop = true;
     this.silentAudio.volume = 0.01;
+    // iOS attributes to keep audio session alive
+    this.silentAudio.setAttribute('playsinline', '');
+    this.silentAudio.setAttribute('webkit-playsinline', '');
     this.silentAudio.play().catch(() => {
       // Autoplay may be blocked — will start on next user gesture
     });
@@ -1112,7 +1115,7 @@ export class AudioEngine {
     onPause?: () => void;
     onResume?: () => void;
     onStop?: () => void;
-  }): void {
+  }, artwork?: MediaImage[]): void {
     this._mediaSessionCallbacks = callbacks;
     if (!('mediaSession' in navigator)) return;
 
@@ -1120,6 +1123,7 @@ export class AudioEngine {
       title: title || 'Binaural Session',
       artist: 'Binara',
       album: category || 'Binaural Beats',
+      artwork: artwork || [],
     });
 
     navigator.mediaSession.setActionHandler('play', () => {
