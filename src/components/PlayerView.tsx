@@ -9,6 +9,8 @@ import VolumeSlider from './VolumeSlider';
 import SensorToggle from './SensorToggle';
 import AutoMotionToggle from './AutoMotionToggle';
 import HapticToggle from './HapticToggle';
+import BreathingOverlay, { BreathingToggle } from './BreathingOverlay';
+import { getDefaultPatternId } from '@/lib/breathing-patterns';
 import AmbientSelector from './AmbientSelector';
 import SleepTimer from './SleepTimer';
 import PhaseIndicator from './PhaseIndicator';
@@ -95,6 +97,8 @@ export default function PlayerView({
 }: PlayerViewProps) {
   const playerState = !isPlaying && !isPaused ? 'pre-play' : isPlaying && !isPaused ? 'playing' : 'paused';
   const [heartScale, setHeartScale] = useState(1);
+  const [breathingActive, setBreathingActive] = useState(false);
+  const [breathingPatternId, setBreathingPatternId] = useState(() => getDefaultPatternId(preset.category));
   const handleHeart = useCallback(() => {
     setHeartScale(1.3);
     setTimeout(() => setHeartScale(1), 200);
@@ -114,6 +118,13 @@ export default function PlayerView({
         beatFrequency={preset.beatFreq}
         isPlaying={isPlaying && !isPaused}
         color={preset.color}
+      />
+
+      {/* Breathing overlay — behind content */}
+      <BreathingOverlay
+        color={preset.color}
+        category={preset.category}
+        isActive={breathingActive && (isPlaying || isPaused)}
       />
 
       {/* Content layer */}
@@ -266,6 +277,17 @@ export default function PlayerView({
               intensity={hapticIntensity ?? 50}
               onToggle={onHapticToggle}
               onIntensityChange={onHapticIntensityChange ?? (() => {})}
+              color={preset.color}
+            />
+          )}
+
+          {/* Guided Breathing toggle */}
+          {(isPlaying || isPaused) && (
+            <BreathingToggle
+              isActive={breathingActive}
+              onToggle={() => setBreathingActive(!breathingActive)}
+              patternId={breathingPatternId}
+              onPatternChange={setBreathingPatternId}
               color={preset.color}
             />
           )}
