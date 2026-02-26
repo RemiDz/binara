@@ -1,4 +1,6 @@
-const CACHE_NAME = 'binara-v2';
+const APP_CACHE = 'binara-app-v3';
+const AUDIO_CACHE = 'binara-audio-v1';
+
 const STATIC_ASSETS = [
   '/',
   '/manifest.webmanifest',
@@ -13,7 +15,7 @@ const STATIC_ASSETS = [
 // Install: pre-cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(APP_CACHE).then((cache) => cache.addAll(STATIC_ASSETS))
   );
   self.skipWaiting();
 });
@@ -22,32 +24,55 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(
+        keys
+          .filter((k) => k !== APP_CACHE && k !== AUDIO_CACHE)
+          .map((k) => caches.delete(k))
+      )
     )
   );
   self.clients.claim();
 });
 
-// Fetch: network-first for navigation, cache-first for static assets
+// Fetch handler
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+  const url = new URL(request.url);
 
   // Skip non-GET requests
   if (request.method !== 'GET') return;
 
   // Skip API routes (licence, etc.)
-  if (request.url.includes('/api/')) return;
+  if (url.pathname.startsWith('/api/')) return;
 
   // Skip analytics
   if (request.url.includes('plausible.io')) return;
 
-  // Navigation requests: network-first
+  // Ambient audio files: cache on first use (separate cache)
+  if (url.pathname.startsWith('/audio/ambient/')) {
+    event.respondWith(
+      caches.open(AUDIO_CACHE).then((cache) =>
+        cache.match(request).then((cached) => {
+          if (cached) return cached;
+          return fetch(request).then((response) => {
+            if (response.ok) {
+              cache.put(request, response.clone());
+            }
+            return response;
+          });
+        })
+      )
+    );
+    return;
+  }
+
+  // Navigation requests: network-first with offline fallback
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then((response) => {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          caches.open(APP_CACHE).then((cache) => cache.put(request, clone));
           return response;
         })
         .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
@@ -63,7 +88,7 @@ self.addEventListener('fetch', (event) => {
         // Only cache same-origin requests
         if (response.ok && request.url.startsWith(self.location.origin)) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          caches.open(APP_CACHE).then((cache) => cache.put(request, clone));
         }
         return response;
       });

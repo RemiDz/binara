@@ -40,6 +40,7 @@ import { getPresetById } from '@/lib/presets';
 import { isPresetFavourited, toggleListenFavourite } from '@/lib/favourites-storage';
 import { createSessionLog, saveSessionLog, loadHistory, calculateStreak, getMonthlyStats } from '@/lib/session-history';
 import StatsView from './StatsView';
+import OfflineIndicator from './OfflineIndicator';
 import type { MixConfig, AdvancedSessionConfig } from '@/types';
 
 function timerToSeconds(minutes: number): number {
@@ -1548,6 +1549,7 @@ export default function App() {
         )}
         <Toast />
         <InstallBanner />
+        <OfflineIndicator />
         <ProUpgrade
           isOpen={proUpgradeOpen}
           onClose={() => setProUpgradeOpen(false)}

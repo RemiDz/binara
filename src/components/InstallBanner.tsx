@@ -16,16 +16,20 @@ export default function InstallBanner() {
     // Don't show if already installed (standalone mode)
     if (window.matchMedia('(display-mode: standalone)').matches) return;
 
-    // Don't show if dismissed before
-    if (localStorage.getItem('binara_install_dismissed') === 'true') return;
+    // Don't show if dismissed within last 7 days
+    const dismissedAt = localStorage.getItem('binara_install_dismissed');
+    if (dismissedAt) {
+      const ts = parseInt(dismissedAt, 10);
+      if (!isNaN(ts) && Date.now() - ts < 7 * 24 * 60 * 60 * 1000) return;
+    }
 
     const handler = (e: Event) => {
       e.preventDefault();
       deferredPromptRef.current = e as BeforeInstallPromptEvent;
 
-      // Show after 2+ completed sessions
+      // Show after 3+ completed sessions
       const sessionCount = parseInt(localStorage.getItem('binara_sessions_count') || '0');
-      if (sessionCount >= 2) {
+      if (sessionCount >= 3) {
         setShow(true);
       }
     };
@@ -47,7 +51,7 @@ export default function InstallBanner() {
   };
 
   const handleDismiss = () => {
-    localStorage.setItem('binara_install_dismissed', 'true');
+    localStorage.setItem('binara_install_dismissed', String(Date.now()));
     setShow(false);
   };
 
