@@ -16,6 +16,7 @@ import SessionComplete from './SessionComplete';
 import Onboarding from './Onboarding';
 import Toast from './Toast';
 import HeadphoneBanner from './HeadphoneBanner';
+import HeadphoneWarning, { useHeadphoneWarning } from './HeadphoneWarning';
 import InstallBanner from './InstallBanner';
 import MixBuilder from './mix/MixBuilder';
 import MixPlayer from './mix/MixPlayer';
@@ -77,6 +78,10 @@ export default function App() {
   const [listenBeatFreq, setListenBeatFreq] = useState(0);
   const [listenTotalProgress, setListenTotalProgress] = useState(0);
   const currentBeatFreqRef = useRef(0);
+
+  // Headphone warning overlay
+  const headphoneWarning = useHeadphoneWarning();
+  const pendingPlayRef = useRef<(() => void) | null>(null);
 
   // Check onboarding status on mount
   useEffect(() => {
@@ -483,7 +488,7 @@ export default function App() {
     }
   }, [state.activePreset, state.volume, state.isPlaying, audio]);
 
-  const handlePlay = useCallback(async () => {
+  const doPlay = useCallback(async () => {
     if (!state.activePreset) return;
     const preset = state.activePreset;
     trackEvent('Session Start', { mode: 'easy' });
@@ -512,6 +517,14 @@ export default function App() {
     dispatch({ type: 'SET_ELAPSED_TIME', payload: 0 });
     dispatch({ type: 'SET_SESSION_COMPLETE', payload: false });
   }, [state.activePreset, state.volume, audio, dispatch]);
+
+  const handlePlay = useCallback(() => {
+    if (headphoneWarning.showIfNeeded()) {
+      pendingPlayRef.current = () => { doPlay(); };
+      return;
+    }
+    doPlay();
+  }, [headphoneWarning, doPlay]);
 
   const handleStop = useCallback(() => {
     trackEvent('Session Abandon', { mode: 'easy', elapsed: state.elapsedTime, total: state.sessionDuration * 60 });
@@ -612,7 +625,7 @@ export default function App() {
 
   // ─── Mix mode handlers ───
 
-  const handleStartMixSession = useCallback(async (config: MixConfig) => {
+  const doStartMixSession = useCallback(async (config: MixConfig) => {
     const bwState = getBrainwaveState(config.stateId);
     const carrier = getCarrierTone(config.carrierId);
     if (!bwState && config.stateId !== 'custom') return;
@@ -656,6 +669,14 @@ export default function App() {
 
     dispatch({ type: 'START_MIX_SESSION', payload: config });
   }, [audio, state.volume, dispatch]);
+
+  const handleStartMixSession = useCallback((config: MixConfig) => {
+    if (headphoneWarning.showIfNeeded()) {
+      pendingPlayRef.current = () => { doStartMixSession(config); };
+      return;
+    }
+    doStartMixSession(config);
+  }, [headphoneWarning, doStartMixSession]);
 
   const handleMixSessionComplete = useCallback(async () => {
     const totalMin = state.mixConfig ? state.mixConfig.timeline.easeIn + state.mixConfig.timeline.deep + state.mixConfig.timeline.easeOut : 0;
@@ -716,7 +737,7 @@ export default function App() {
     audio.stopPreview();
   }, [audio]);
 
-  const handleStartAdvancedSession = useCallback(async (config: AdvancedSessionConfig) => {
+  const doStartAdvancedSession = useCallback(async (config: AdvancedSessionConfig) => {
     trackEvent('Session Start', { mode: 'advanced' });
 
     const engine = audio.getEngine();
@@ -768,6 +789,14 @@ export default function App() {
 
     dispatch({ type: 'START_ADVANCED_SESSION', payload: config });
   }, [audio, state.volume, dispatch]);
+
+  const handleStartAdvancedSession = useCallback((config: AdvancedSessionConfig) => {
+    if (headphoneWarning.showIfNeeded()) {
+      pendingPlayRef.current = () => { doStartAdvancedSession(config); };
+      return;
+    }
+    doStartAdvancedSession(config);
+  }, [headphoneWarning, doStartAdvancedSession]);
 
   const handleAdvancedSessionComplete = useCallback(async () => {
     const totalMin = state.advancedConfig ? state.advancedConfig.timeline.reduce((sum, p) => sum + p.duration, 0) : 0;
@@ -1301,6 +1330,15 @@ export default function App() {
         <ProUpgrade
           isOpen={proUpgradeOpen}
           onClose={() => setProUpgradeOpen(false)}
+        />
+        <HeadphoneWarning
+          isOpen={headphoneWarning.isOpen}
+          onDismiss={(permanent) => {
+            headphoneWarning.dismiss(permanent);
+            const pending = pendingPlayRef.current;
+            pendingPlayRef.current = null;
+            if (pending) pending();
+          }}
         />
       </div>
     </>
