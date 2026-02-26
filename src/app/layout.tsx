@@ -133,13 +133,13 @@ export default function RootLayout({
             }),
           }}
         />
+        {/* Privacy-friendly analytics by Plausible */}
         <Script
-          src="https://plausible.io/js/pa-hDSusz4l1UN40m8gFZsnn.js"
+          defer
+          data-domain="binara.app"
+          src="https://plausible.io/js/script.js"
           strategy="afterInteractive"
         />
-        <Script id="plausible-init" strategy="afterInteractive">
-          {`window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()`}
-        </Script>
       </head>
       <body
         className={`${playfair.variable} ${inter.variable} ${jetbrains.variable} ${cormorant.variable} antialiased`}
