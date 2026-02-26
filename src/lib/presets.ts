@@ -375,7 +375,11 @@ export const PRESETS: Preset[] = [
   },
 ];
 
-export function getPresetsByCategory(category: PresetCategory | 'all'): Preset[] {
+export function getPresetsByCategory(category: PresetCategory | 'all' | 'favourites', favouriteIds?: string[]): Preset[] {
+  if (category === 'favourites') {
+    if (!favouriteIds || favouriteIds.length === 0) return [];
+    return PRESETS.filter((p) => favouriteIds.includes(p.id));
+  }
   if (category === 'all') return PRESETS;
   return PRESETS.filter((p) => p.category === category);
 }

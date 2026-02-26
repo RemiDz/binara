@@ -77,7 +77,7 @@ export interface AppState {
   showPlayer: boolean;
   showMiniPlayer: boolean;
   onboardingComplete: boolean;
-  selectedCategory: PresetCategory | 'all';
+  selectedCategory: PresetCategory | 'all' | 'favourites';
   sessionComplete: boolean;
   toastMessage: string | null;
   // Mix mode state
@@ -107,7 +107,7 @@ export type AppAction =
   | { type: 'SET_SHOW_PLAYER'; payload: boolean }
   | { type: 'SET_SHOW_MINI_PLAYER'; payload: boolean }
   | { type: 'SET_ONBOARDING_COMPLETE'; payload: boolean }
-  | { type: 'SET_SELECTED_CATEGORY'; payload: PresetCategory | 'all' }
+  | { type: 'SET_SELECTED_CATEGORY'; payload: PresetCategory | 'all' | 'favourites' }
   | { type: 'SET_SESSION_COMPLETE'; payload: boolean }
   | { type: 'SET_TOAST'; payload: string | null }
   | { type: 'START_SESSION'; payload: { preset: Preset; duration: number } }

@@ -12,6 +12,8 @@ import SavedSessionsList from './SavedSessionsList';
 import { getBrainwaveState, type BrainwaveStateOption } from '@/lib/brainwave-states';
 import { getCarrierTone, type CarrierTone } from '@/lib/carrier-tones';
 import { loadSessions, saveSession, deleteSession, generateSessionName, type SavedSession } from '@/lib/session-storage';
+import { saveMixFavourite } from '@/lib/favourites-storage';
+import { useProContext } from '@/context/ProContext';
 import type { MixConfig } from '@/types';
 
 interface MixBuilderProps {
@@ -21,6 +23,7 @@ interface MixBuilderProps {
 }
 
 export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReached }: MixBuilderProps) {
+  const { isPro } = useProContext();
   // Step 1: Brainwave state
   const [stateId, setStateId] = useState('calm-focus');
   // Step 2: Carrier tone
@@ -96,6 +99,17 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
       onLimitReached(result.error ?? 'Could not save session');
     }
   }, [stateId, carrierId, customCarrierFreq, customBeatFreq, ambientLayers, easeIn, deep, easeOut, onLimitReached]);
+
+  const [showFavModal, setShowFavModal] = useState(false);
+
+  const handleSaveFavourite = useCallback((name: string) => {
+    const result = saveMixFavourite(name, buildConfig(), isPro);
+    if (result.success) {
+      setShowFavModal(false);
+    } else {
+      onLimitReached(result.error ?? 'Could not save favourite');
+    }
+  }, [buildConfig, isPro, onLimitReached]);
 
   const handleDelete = useCallback((id: string) => {
     deleteSession(id);
@@ -212,17 +226,30 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
         >
           {"▶ Start Session"}
         </button>
-        <button
-          onClick={() => setShowSaveModal(true)}
-          className="w-full max-w-xs py-2.5 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
-          style={{
-            background: 'var(--glass-bg)',
-            border: '1px solid var(--glass-border)',
-            color: 'var(--text-secondary)',
-          }}
-        >
-          {"💾 Save Session"}
-        </button>
+        <div className="flex gap-2 w-full max-w-xs">
+          <button
+            onClick={() => setShowSaveModal(true)}
+            className="flex-1 py-2.5 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
+            style={{
+              background: 'var(--glass-bg)',
+              border: '1px solid var(--glass-border)',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            {"💾 Save"}
+          </button>
+          <button
+            onClick={() => setShowFavModal(true)}
+            className="flex-1 py-2.5 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
+            style={{
+              background: 'rgba(255,107,138,0.08)',
+              border: '1px solid rgba(255,107,138,0.2)',
+              color: '#ff6b8a',
+            }}
+          >
+            {"\u2665 Favourite"}
+          </button>
+        </div>
       </div>
 
       {/* Save modal */}
@@ -232,6 +259,17 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
             defaultName={defaultSaveName}
             onSave={handleSave}
             onCancel={() => setShowSaveModal(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Favourite modal */}
+      <AnimatePresence>
+        {showFavModal && (
+          <SaveSessionModal
+            defaultName={`My Mix — ${bwState?.label ?? 'Custom'}`}
+            onSave={handleSaveFavourite}
+            onCancel={() => setShowFavModal(false)}
           />
         )}
       </AnimatePresence>

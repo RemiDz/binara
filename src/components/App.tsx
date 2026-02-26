@@ -34,6 +34,7 @@ import { getMediaArtwork } from '@/lib/media-artwork';
 import { trackEvent } from '@/lib/analytics';
 import { VOLUME_HARD_CAP } from '@/lib/constants';
 import { getEaseInStartFreq, getSessionPhaseInfo } from '@/lib/session-phases';
+import { isPresetFavourited, toggleListenFavourite } from '@/lib/favourites-storage';
 import type { MixConfig, AdvancedSessionConfig } from '@/types';
 
 function timerToSeconds(minutes: number): number {
@@ -43,7 +44,7 @@ function timerToSeconds(minutes: number): number {
 export default function App() {
   const state = useAppState();
   const dispatch = useAppDispatch();
-  const { activate } = useProContext();
+  const { activate, isPro } = useProContext();
   const audio = useAudioEngine();
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timelineRunnerRef = useRef<TimelineRunner | null>(null);
@@ -82,6 +83,25 @@ export default function App() {
   // Headphone warning overlay
   const headphoneWarning = useHeadphoneWarning();
   const pendingPlayRef = useRef<(() => void) | null>(null);
+
+  // Favourites (for PlayerView heart toggle)
+  const [playerFav, setPlayerFav] = useState(false);
+  // Sync favourite state when active preset changes
+  useEffect(() => {
+    setPlayerFav(state.activePreset ? isPresetFavourited(state.activePreset.id) : false);
+  }, [state.activePreset]);
+
+  const handleTogglePlayerFavourite = useCallback((presetId: string) => {
+    const preset = state.activePreset;
+    const name = preset?.name ?? presetId;
+    const result = toggleListenFavourite(presetId, name, isPro);
+    if (result.success) {
+      setPlayerFav(result.favourited);
+    } else if (result.error) {
+      dispatch({ type: 'SET_TOAST', payload: result.error });
+      window.dispatchEvent(new Event('binara:open-pro-upgrade'));
+    }
+  }, [state.activePreset, isPro, dispatch]);
 
   // Check onboarding status on mount
   useEffect(() => {
@@ -1262,6 +1282,8 @@ export default function App() {
           autoMotionIntensity={autoMotionIntensity}
           onAutoMotionToggle={handleListenAutoMotionToggle}
           onAutoMotionIntensityChange={handleListenAutoMotionIntensityChange}
+          isFavourited={playerFav}
+          onToggleFavourite={handleTogglePlayerFavourite}
         />
       </>
     );

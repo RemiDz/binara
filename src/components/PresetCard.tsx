@@ -15,6 +15,8 @@ interface PresetCardProps {
   previewProgress: number;
   onPreviewToggle: (preset: Preset) => void;
   onStopPreview: () => void;
+  isFavourited: boolean;
+  onToggleFavourite: (presetId: string) => void;
 }
 
 export default function PresetCard({
@@ -25,17 +27,29 @@ export default function PresetCard({
   previewProgress,
   onPreviewToggle,
   onStopPreview,
+  isFavourited,
+  onToggleFavourite,
 }: PresetCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
   const waveState = WAVE_STATES[preset.brainwaveState];
   const isPreviewing = previewingId === preset.id;
 
+  const [heartScale, setHeartScale] = useState(1);
+
   const handlePlayClick = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     e.preventDefault();
     trackEvent('Preset Preview', { preset: preset.name, action: isPreviewing ? 'stop' : 'start' });
     onPreviewToggle(preset);
+  };
+
+  const handleHeartClick = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setHeartScale(1.3);
+    setTimeout(() => setHeartScale(1), 200);
+    onToggleFavourite(preset.id);
   };
 
   const handleCardClick = () => {
@@ -97,6 +111,40 @@ export default function PresetCard({
         flexDirection: 'column',
         justifyContent: 'space-between',
       }}>
+
+        {/* Favourite heart */}
+        <button
+          onClick={handleHeartClick}
+          onTouchEnd={(e) => e.stopPropagation()}
+          aria-label={isFavourited ? 'Remove from favourites' : 'Add to favourites'}
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 2,
+            width: 24,
+            height: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 0,
+            outline: 'none',
+            transform: `scale(${heartScale})`,
+            transition: 'transform 0.2s ease, opacity 0.3s ease',
+            opacity: isFavourited ? 1 : (isHovered || isPreviewing) ? 0.5 : 0.2,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path
+              d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
+              fill={isFavourited ? '#ff6b8a' : 'none'}
+              stroke={isFavourited ? '#ff6b8a' : 'rgba(255,255,255,0.4)'}
+            />
+          </svg>
+        </button>
 
         {/* Top row: ring + name + freq */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>

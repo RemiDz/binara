@@ -19,6 +19,7 @@ import BackgroundVisualiser from '../BackgroundVisualiser';
 import type { AdvancedSessionConfig, BeatLayer, FilterConfig, LFOConfig, IsochronicConfig, StereoConfig, SavedAdvancedSession } from '@/types';
 import { createDefaultAdvancedConfig, createDefaultBeatLayer } from '@/types';
 import { loadAdvancedSessions, saveAdvancedSession, deleteAdvancedSession } from '@/lib/session-storage';
+import { saveCreateFavourite } from '@/lib/favourites-storage';
 import type { UseAudioEngineReturn } from '@/hooks/useAudioEngine';
 
 interface AdvancedBuilderProps {
@@ -294,6 +295,17 @@ export default function AdvancedBuilder({
     }
   }, [config, saveName, isPro, onLimitReached]);
 
+  const handleSaveFavourite = useCallback(() => {
+    const name = saveName.trim() || `Custom — ${config.layers[0]?.beatFreq ?? 10} Hz`;
+    const result = saveCreateFavourite(name, config, isPro);
+    if (result.success) {
+      setShowSaveModal(false);
+      setSaveName('');
+    } else {
+      onLimitReached(result.error ?? 'Could not save favourite');
+    }
+  }, [config, saveName, isPro, onLimitReached]);
+
   const handleDelete = useCallback((id: string) => {
     deleteAdvancedSession(id);
     setSessions(loadAdvancedSessions());
@@ -513,18 +525,31 @@ export default function AdvancedBuilder({
 
         {/* ═══ Action Buttons ═══ */}
         <div className="flex flex-col gap-3 items-center pt-2">
-          {/* Save Preset — Primary action */}
-          <button
-            onClick={() => setShowSaveModal(true)}
-            className="w-full max-w-xs py-3 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
-            style={{
-              background: 'rgba(121, 134, 203, 0.2)',
-              border: '1px solid rgba(121, 134, 203, 0.4)',
-              color: '#7986cb',
-            }}
-          >
-            {"💾 Save Preset"}
-          </button>
+          {/* Save + Favourite row */}
+          <div className="flex gap-2 w-full max-w-xs">
+            <button
+              onClick={() => setShowSaveModal(true)}
+              className="flex-1 py-3 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
+              style={{
+                background: 'rgba(121, 134, 203, 0.2)',
+                border: '1px solid rgba(121, 134, 203, 0.4)',
+                color: '#7986cb',
+              }}
+            >
+              {"💾 Save"}
+            </button>
+            <button
+              onClick={handleSaveFavourite}
+              className="flex-1 py-3 rounded-full text-sm font-[family-name:var(--font-inter)] font-medium transition-all active:scale-[0.98]"
+              style={{
+                background: 'rgba(255,107,138,0.08)',
+                border: '1px solid rgba(255,107,138,0.2)',
+                color: '#ff6b8a',
+              }}
+            >
+              {"\u2665 Favourite"}
+            </button>
+          </div>
 
           {/* Export + Share row */}
           <div className="flex gap-2 w-full max-w-xs">

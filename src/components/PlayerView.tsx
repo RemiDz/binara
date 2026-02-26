@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import { motion } from 'motion/react';
 import type { Preset } from '@/types';
 import BackgroundVisualiser from './BackgroundVisualiser';
@@ -44,6 +45,8 @@ interface PlayerViewProps {
   autoMotionIntensity?: number;
   onAutoMotionToggle?: () => void;
   onAutoMotionIntensityChange?: (value: number) => void;
+  isFavourited: boolean;
+  onToggleFavourite: (presetId: string) => void;
 }
 
 export default function PlayerView({
@@ -77,8 +80,16 @@ export default function PlayerView({
   autoMotionIntensity,
   onAutoMotionToggle,
   onAutoMotionIntensityChange,
+  isFavourited,
+  onToggleFavourite,
 }: PlayerViewProps) {
   const playerState = !isPlaying && !isPaused ? 'pre-play' : isPlaying && !isPaused ? 'playing' : 'paused';
+  const [heartScale, setHeartScale] = useState(1);
+  const handleHeart = useCallback(() => {
+    setHeartScale(1.3);
+    setTimeout(() => setHeartScale(1), 200);
+    onToggleFavourite(preset.id);
+  }, [preset.id, onToggleFavourite]);
 
   return (
     <motion.div
@@ -115,12 +126,35 @@ export default function PlayerView({
         <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-4">
           {/* Session info */}
           <div className="text-center space-y-0.5">
-            <h2
-              className="font-[family-name:var(--font-playfair)] text-xl"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {preset.name}
-            </h2>
+            <div className="flex items-center justify-center gap-2">
+              <h2
+                className="font-[family-name:var(--font-playfair)] text-xl"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                {preset.name}
+              </h2>
+              <button
+                onClick={handleHeart}
+                aria-label={isFavourited ? 'Remove from favourites' : 'Add to favourites'}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 2,
+                  outline: 'none',
+                  transform: `scale(${heartScale})`,
+                  transition: 'transform 0.2s ease',
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path
+                    d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
+                    fill={isFavourited ? '#ff6b8a' : 'none'}
+                    stroke={isFavourited ? '#ff6b8a' : 'rgba(255,255,255,0.3)'}
+                  />
+                </svg>
+              </button>
+            </div>
             <p
               className="font-[family-name:var(--font-jetbrains)] text-[11px]"
               style={{ color: preset.color }}
