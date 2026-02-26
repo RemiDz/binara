@@ -34,6 +34,7 @@ import { getMediaArtwork } from '@/lib/media-artwork';
 import { trackEvent } from '@/lib/analytics';
 import { VOLUME_HARD_CAP } from '@/lib/constants';
 import { getEaseInStartFreq, getSessionPhaseInfo } from '@/lib/session-phases';
+import { getPresetById } from '@/lib/presets';
 import { isPresetFavourited, toggleListenFavourite } from '@/lib/favourites-storage';
 import type { MixConfig, AdvancedSessionConfig } from '@/types';
 
@@ -136,15 +137,27 @@ export default function App() {
     }
   }, [activate, dispatch]);
 
-  // Shared session loading (#s=... in URL hash)
+  // Shared session loading (/s/... URLs or legacy #s=... hash)
   useEffect(() => {
     const shared = getSharedSessionFromURL();
     if (!shared) return;
 
-    // Clean URL hash
-    window.history.replaceState({}, '', window.location.pathname + window.location.search);
+    // Clean URL — navigate back to root
+    window.history.replaceState({}, '', '/');
 
-    if (shared.type === 'mix') {
+    if (shared.type === 'listen') {
+      // Load the preset by ID
+      const preset = getPresetById(shared.presetId);
+      if (preset) {
+        dispatch({ type: 'SET_MODE', payload: 'listen' });
+        dispatch({ type: 'SET_ACTIVE_PRESET', payload: preset });
+        dispatch({ type: 'SET_SESSION_DURATION', payload: preset.defaultDuration });
+        dispatch({ type: 'SET_SHOW_PLAYER', payload: true });
+        dispatch({ type: 'SET_TOAST', payload: 'Shared session loaded!' });
+      } else {
+        dispatch({ type: 'SET_TOAST', payload: 'Session not found. Explore presets instead.' });
+      }
+    } else if (shared.type === 'mix') {
       dispatch({ type: 'SET_MODE', payload: 'mix' });
       handleStartMixSession(shared.config);
       dispatch({ type: 'SET_TOAST', payload: 'Shared session loaded!' });

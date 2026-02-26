@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trackEvent } from '@/lib/analytics';
 import FrequencyRing from './listen/FrequencyRing';
 import WaveformSignature from './listen/WaveformSignature';
+import ShareButton from './ShareButton';
 import { WAVE_STATES } from './listen/wave-states';
 import type { Preset } from '@/types';
 
@@ -235,14 +236,21 @@ export default function PresetCard({
           justifyContent: 'space-between',
           marginTop: 8,
         }}>
-          <span style={{
-            fontFamily: 'var(--font-jetbrains), monospace',
-            fontSize: 10,
-            color: 'rgba(255,255,255,0.2)',
-            letterSpacing: '0.08em',
-          }}>
-            {preset.defaultDuration} min
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{
+              fontFamily: 'var(--font-jetbrains), monospace',
+              fontSize: 10,
+              color: 'rgba(255,255,255,0.2)',
+              letterSpacing: '0.08em',
+            }}>
+              {preset.defaultDuration} min
+            </span>
+            <ShareButton
+              session={{ type: 'listen', presetId: preset.id }}
+              sessionName={preset.name}
+              compact
+            />
+          </div>
 
           {/* Play / Pause button */}
           <button

@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { useProContext } from '@/context/ProContext';
 import { useAppDispatch } from '@/context/AppContext';
 import { shareSession, type SharedSession } from '@/lib/sharing';
 import { trackEvent } from '@/lib/analytics';
@@ -9,14 +8,18 @@ import { trackEvent } from '@/lib/analytics';
 interface ShareButtonProps {
   session: SharedSession;
   sessionName: string;
+  compact?: boolean;
 }
 
-export default function ShareButton({ session, sessionName }: ShareButtonProps) {
-  const { isPro } = useProContext();
+export default function ShareButton({ session, sessionName, compact = false }: ShareButtonProps) {
   const dispatch = useAppDispatch();
   const [sharing, setSharing] = useState(false);
 
-  const handleShare = useCallback(async () => {
+  const handleShare = useCallback(async (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     if (sharing) return;
     setSharing(true);
 
@@ -31,7 +34,32 @@ export default function ShareButton({ session, sessionName }: ShareButtonProps) 
     setSharing(false);
   }, [session, sessionName, sharing, dispatch]);
 
-  if (!isPro) return null;
+  if (compact) {
+    return (
+      <button
+        onClick={handleShare}
+        disabled={sharing}
+        style={{
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          padding: 0,
+          outline: 'none',
+          opacity: sharing ? 0.5 : 0.3,
+          transition: 'opacity 0.3s ease',
+        }}
+        aria-label="Share"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="18" cy="5" r="3" />
+          <circle cx="6" cy="12" r="3" />
+          <circle cx="18" cy="19" r="3" />
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+        </svg>
+      </button>
+    );
+  }
 
   return (
     <button

@@ -13,6 +13,7 @@ import SleepTimer from './SleepTimer';
 import PhaseIndicator from './PhaseIndicator';
 import DurationSelector from './DurationSelector';
 import InfoSection from './InfoSection';
+import ShareButton from './ShareButton';
 
 interface PlayerViewProps {
   preset: Preset;
@@ -120,6 +121,10 @@ export default function PlayerView({
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
           </button>
+          <ShareButton
+            session={{ type: 'listen', presetId: preset.id }}
+            sessionName={preset.name}
+          />
         </div>
 
         {/* Scrollable content */}
