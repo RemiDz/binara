@@ -117,6 +117,13 @@ export default function HeadphoneWarning({ isOpen, onDismiss }: HeadphoneWarning
               Binaural beats work by sending slightly different frequencies to each ear. For the full effect, use headphones or earbuds.
             </p>
 
+            <p
+              className="font-[family-name:var(--font-inter)] text-[11px] leading-relaxed mb-6"
+              style={{ color: 'var(--text-muted)', opacity: 0.7 }}
+            >
+              {"Without headphones, you\u2019ll still enjoy the ambient sounds and tones, but the binaural beat effect requires isolated left/right audio channels."}
+            </p>
+
             {/* Got it button */}
             <button
               onClick={handleDismiss}
