@@ -23,6 +23,7 @@ import MixPlayer from './mix/MixPlayer';
 import AdvancedBuilder from './advanced/AdvancedBuilder';
 import AdvancedPlayer from './advanced/AdvancedPlayer';
 import ProUpgrade from './ProUpgrade';
+import DailyRecommendation from './DailyRecommendation';
 import { SensorEngine } from '@/lib/sensor-engine';
 import { AutoMotionEngine } from '@/lib/auto-motion-engine';
 import { getBrainwaveState } from '@/lib/brainwave-states';
@@ -1312,6 +1313,13 @@ export default function App() {
 
         {state.mode === 'listen' && (
           <>
+            <DailyRecommendation
+              onSelect={(preset) => {
+                dispatch({ type: 'SET_ACTIVE_PRESET', payload: preset });
+                dispatch({ type: 'SET_SESSION_DURATION', payload: preset.defaultDuration });
+                dispatch({ type: 'SET_SHOW_PLAYER', payload: true });
+              }}
+            />
             <CategoryFilter />
             <HeadphoneBanner />
             <PresetGrid miniPlayerVisible={state.showMiniPlayer} />
