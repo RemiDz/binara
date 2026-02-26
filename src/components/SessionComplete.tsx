@@ -1,7 +1,9 @@
 'use client';
 
+import { useMemo } from 'react';
 import { motion } from 'motion/react';
 import type { Preset } from '@/types';
+import { loadHistory, calculateStreak, getMonthlyStats } from '@/lib/session-history';
 
 interface SessionCompleteProps {
   preset: Preset;
@@ -11,6 +13,14 @@ interface SessionCompleteProps {
 }
 
 export default function SessionComplete({ preset, duration, onPlayAgain, onChooseAnother }: SessionCompleteProps) {
+  const { streak, monthMinutes } = useMemo(() => {
+    const history = loadHistory();
+    const s = calculateStreak(history);
+    const now = new Date();
+    const stats = getMonthlyStats(history, now.getFullYear(), now.getMonth());
+    return { streak: s.currentStreak, monthMinutes: stats.totalMinutes };
+  }, []);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -41,6 +51,25 @@ export default function SessionComplete({ preset, duration, onPlayAgain, onChoos
           >
             {preset.name} {"·"} {duration} min
           </p>
+        </div>
+
+        {/* Streak and monthly stats */}
+        <div className="flex items-center justify-center gap-6">
+          {streak > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span style={{ fontSize: 16 }}>{"\uD83D\uDD25"}</span>
+              <span className="font-[family-name:var(--font-inter)] text-xs" style={{ color: '#F7B731' }}>
+                {streak} day streak
+              </span>
+            </div>
+          )}
+          {monthMinutes > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="font-[family-name:var(--font-inter)] text-xs" style={{ color: 'var(--text-muted)' }}>
+                {monthMinutes} min this month
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-3 pt-4">

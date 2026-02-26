@@ -38,6 +38,8 @@ import { VOLUME_HARD_CAP } from '@/lib/constants';
 import { getEaseInStartFreq, getSessionPhaseInfo } from '@/lib/session-phases';
 import { getPresetById } from '@/lib/presets';
 import { isPresetFavourited, toggleListenFavourite } from '@/lib/favourites-storage';
+import { createSessionLog, saveSessionLog, loadHistory, calculateStreak, getMonthlyStats } from '@/lib/session-history';
+import StatsView from './StatsView';
 import type { MixConfig, AdvancedSessionConfig } from '@/types';
 
 function timerToSeconds(minutes: number): number {
@@ -55,6 +57,7 @@ export default function App() {
 
   // PRO upgrade modal (triggered by inline upgrade links)
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
+  const [showStats, setShowStats] = useState(false);
 
   // Sensor modulation state (Listen mode)
   const [listenSensorActive, setListenSensorActive] = useState(false);
@@ -518,12 +521,35 @@ export default function App() {
     sensorRafRef.current = requestAnimationFrame(loop);
   }, [audio, state.activePreset, listenSensorActive, listenAutoMotionActive, stopListenSensors, stopListenAutoMotion]);
 
+  // ─── Session logging helper ───
+
+  const logListenSession = useCallback((completedFull: boolean) => {
+    const preset = state.activePreset;
+    if (!preset) return;
+    const log = createSessionLog({
+      presetName: preset.name,
+      presetId: preset.id,
+      mode: 'listen',
+      waveState: preset.brainwaveState,
+      beatFreq: preset.beatFreq,
+      carrierFreq: preset.carrierFreq,
+      elapsedSeconds: state.elapsedTime,
+      presetDurationMinutes: state.sessionDuration,
+      completedFull,
+      ambientLayers: state.ambientLayers.map(l => l.id),
+      sensorsUsed: listenSensorActive || listenAutoMotionActive,
+      hapticUsed: hapticActive,
+    });
+    if (log) saveSessionLog(log);
+  }, [state.activePreset, state.elapsedTime, state.sessionDuration, state.ambientLayers, listenSensorActive, listenAutoMotionActive, hapticActive]);
+
   // ─── Listen mode handlers ───
 
   const handleSessionComplete = useCallback(async () => {
     trackEvent('Session Complete', { mode: 'easy', duration: state.sessionDuration, preset: state.activePreset?.name ?? '' });
     const count = parseInt(localStorage.getItem('binara_sessions_count') || '0');
     localStorage.setItem('binara_sessions_count', String(count + 1));
+    logListenSession(true);
     stopListenSensors();
     stopListenAutoMotion();
     stopHaptic();
@@ -533,13 +559,14 @@ export default function App() {
     audio.stopAllAmbientLayers();
     await audio.playCompletionChime();
     dispatch({ type: 'COMPLETE_SESSION' });
-  }, [audio, dispatch, state.sessionDuration, state.activePreset, stopListenSensors, stopListenAutoMotion, stopHaptic]);
+  }, [audio, dispatch, state.sessionDuration, state.activePreset, stopListenSensors, stopListenAutoMotion, stopHaptic, logListenSession]);
 
   const handleSleepTimerComplete = useCallback(async () => {
     const timerVal = sleepTimerRef.current;
     trackEvent('Session Complete', { mode: 'easy', trigger: 'sleep-timer', duration: timerVal ?? 0, preset: state.activePreset?.name ?? '' });
     const count = parseInt(localStorage.getItem('binara_sessions_count') || '0');
     localStorage.setItem('binara_sessions_count', String(count + 1));
+    logListenSession(true);
     stopListenSensors();
     stopListenAutoMotion();
     stopHaptic();
@@ -557,7 +584,7 @@ export default function App() {
 
     sleepFadeStartedRef.current = false;
     dispatch({ type: 'COMPLETE_SESSION' });
-  }, [audio, dispatch, state.activePreset, stopListenSensors, stopListenAutoMotion, stopHaptic]);
+  }, [audio, dispatch, state.activePreset, stopListenSensors, stopListenAutoMotion, stopHaptic, logListenSession]);
 
   const handleSleepTimerChange = useCallback((newValue: number | null) => {
     const wasInFade = sleepFadeStartedRef.current;
@@ -622,6 +649,7 @@ export default function App() {
 
   const handleStop = useCallback(() => {
     trackEvent('Session Abandon', { mode: 'easy', elapsed: state.elapsedTime, total: state.sessionDuration * 60 });
+    logListenSession(false);
     stopListenSensors();
     stopListenAutoMotion();
     stopHaptic();
@@ -632,7 +660,7 @@ export default function App() {
     setTimeout(() => {
       dispatch({ type: 'STOP_SESSION' });
     }, 1600);
-  }, [audio, dispatch, stopListenSensors, stopListenAutoMotion, stopHaptic]);
+  }, [audio, dispatch, stopListenSensors, stopListenAutoMotion, stopHaptic, logListenSession]);
 
   const handlePause = useCallback(async () => {
     await audio.pause();
@@ -781,21 +809,57 @@ export default function App() {
   const handleMixSessionComplete = useCallback(async () => {
     const totalMin = state.mixConfig ? state.mixConfig.timeline.easeIn + state.mixConfig.timeline.deep + state.mixConfig.timeline.easeOut : 0;
     trackEvent('Session Complete', { mode: 'mix', duration: totalMin });
+    if (state.mixConfig) {
+      const bw = getBrainwaveState(state.mixConfig.stateId);
+      const ct = getCarrierTone(state.mixConfig.carrierId);
+      const log = createSessionLog({
+        presetName: `${bw?.label ?? 'Custom'} Mix`,
+        mode: 'mix',
+        waveState: state.mixConfig.stateId,
+        beatFreq: state.mixConfig.customBeatFreq ?? bw?.beatFreq ?? 10,
+        carrierFreq: state.mixConfig.customCarrierFreq ?? ct?.frequency ?? 200,
+        elapsedSeconds: state.elapsedTime,
+        presetDurationMinutes: totalMin,
+        completedFull: true,
+        ambientLayers: state.mixConfig.ambientLayers.map(l => l.id),
+        sensorsUsed: false,
+        hapticUsed: false,
+      });
+      if (log) saveSessionLog(log);
+    }
     audio.stopWithLongFade();
     await audio.playCompletionChime();
     timelineRunnerRef.current = null;
     dispatch({ type: 'COMPLETE_MIX_SESSION' });
-  }, [audio, dispatch, state.mixConfig]);
+  }, [audio, dispatch, state.mixConfig, state.elapsedTime]);
 
   const handleStopMixSession = useCallback(() => {
     trackEvent('Session Abandon', { mode: 'mix', elapsed: state.elapsedTime, total: state.sessionDuration * 60 });
+    if (state.mixConfig) {
+      const bw = getBrainwaveState(state.mixConfig.stateId);
+      const ct = getCarrierTone(state.mixConfig.carrierId);
+      const log = createSessionLog({
+        presetName: `${bw?.label ?? 'Custom'} Mix`,
+        mode: 'mix',
+        waveState: state.mixConfig.stateId,
+        beatFreq: state.mixConfig.customBeatFreq ?? bw?.beatFreq ?? 10,
+        carrierFreq: state.mixConfig.customCarrierFreq ?? ct?.frequency ?? 200,
+        elapsedSeconds: state.elapsedTime,
+        presetDurationMinutes: state.sessionDuration,
+        completedFull: false,
+        ambientLayers: state.mixConfig.ambientLayers.map(l => l.id),
+        sensorsUsed: false,
+        hapticUsed: false,
+      });
+      if (log) saveSessionLog(log);
+    }
     audio.stop();
     audio.stopAllAmbientLayers();
     timelineRunnerRef.current = null;
     setTimeout(() => {
       dispatch({ type: 'STOP_MIX_SESSION' });
     }, 1600);
-  }, [audio, dispatch]);
+  }, [audio, dispatch, state.mixConfig, state.elapsedTime, state.sessionDuration]);
 
   const handleBackFromMixPlayer = useCallback(() => {
     dispatch({ type: 'SET_SHOW_MIX_PLAYER', payload: false });
@@ -901,22 +965,56 @@ export default function App() {
   const handleAdvancedSessionComplete = useCallback(async () => {
     const totalMin = state.advancedConfig ? state.advancedConfig.timeline.reduce((sum, p) => sum + p.duration, 0) : 0;
     trackEvent('Session Complete', { mode: 'advanced', duration: totalMin });
+    if (state.advancedConfig) {
+      const firstOsc = state.advancedConfig.layers[0];
+      const log = createSessionLog({
+        presetName: 'Custom Create',
+        mode: 'create',
+        waveState: 'alpha',
+        beatFreq: firstOsc?.beatFreq || 0,
+        carrierFreq: firstOsc?.carrierFreq || 200,
+        elapsedSeconds: state.elapsedTime,
+        presetDurationMinutes: totalMin,
+        completedFull: true,
+        ambientLayers: state.ambientLayers.map(l => l.id),
+        sensorsUsed: false,
+        hapticUsed: false,
+      });
+      if (log) saveSessionLog(log);
+    }
     audio.stopAdvanced();
     audio.stopAllAmbientLayers();
     await audio.playCompletionChime();
     advancedTimelineRunnerRef.current = null;
     dispatch({ type: 'COMPLETE_ADVANCED_SESSION' });
-  }, [audio, dispatch, state.advancedConfig]);
+  }, [audio, dispatch, state.advancedConfig, state.elapsedTime, state.ambientLayers]);
 
   const handleStopAdvancedSession = useCallback(() => {
     trackEvent('Session Abandon', { mode: 'advanced', elapsed: state.elapsedTime, total: state.sessionDuration * 60 });
+    if (state.advancedConfig) {
+      const firstOsc = state.advancedConfig.layers[0];
+      const log = createSessionLog({
+        presetName: 'Custom Create',
+        mode: 'create',
+        waveState: 'alpha',
+        beatFreq: firstOsc?.beatFreq || 0,
+        carrierFreq: firstOsc?.carrierFreq || 200,
+        elapsedSeconds: state.elapsedTime,
+        presetDurationMinutes: state.sessionDuration,
+        completedFull: false,
+        ambientLayers: state.ambientLayers.map(l => l.id),
+        sensorsUsed: false,
+        hapticUsed: false,
+      });
+      if (log) saveSessionLog(log);
+    }
     audio.stopAdvanced();
     audio.stopAllAmbientLayers();
     advancedTimelineRunnerRef.current = null;
     setTimeout(() => {
       dispatch({ type: 'STOP_ADVANCED_SESSION' });
     }, 2000);
-  }, [audio, dispatch]);
+  }, [audio, dispatch, state.advancedConfig, state.elapsedTime, state.sessionDuration, state.ambientLayers]);
 
   const handleBackFromAdvancedPlayer = useCallback(() => {
     dispatch({ type: 'SET_SHOW_ADVANCED_PLAYER', payload: false });
@@ -1373,12 +1471,22 @@ export default function App() {
     );
   }
 
+  // Stats view
+  if (showStats) {
+    return (
+      <>
+        <Background />
+        <StatsView onClose={() => setShowStats(false)} />
+      </>
+    );
+  }
+
   // Main grid view
   return (
     <>
       <Background />
       <div className="relative z-10 min-h-dvh">
-        <Header />
+        <Header onStatsOpen={() => setShowStats(true)} />
         <ModeSwitcher />
 
         {state.mode === 'listen' && (
