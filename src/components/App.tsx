@@ -1440,7 +1440,16 @@ export default function App() {
           onPause={handlePause}
           onResume={handleResume}
           onVolumeChange={handleVolumeChange}
-          onDurationChange={(d) => dispatch({ type: 'SET_SESSION_DURATION', payload: d })}
+          onDurationChange={(d) => {
+            dispatch({ type: 'SET_SESSION_DURATION', payload: d });
+            // Keep sleep timer in sync if active
+            if (sleepTimer !== null) {
+              setSleepTimer(d);
+              if (state.activePreset) {
+                localStorage.setItem(`binara_timer_${state.activePreset.category}`, String(d));
+              }
+            }
+          }}
           onToggleAmbient={handleToggleAmbient}
           onUpdateLayerVolume={handleUpdateLayerVolume}
           onRemoveLayer={handleRemoveLayer}
