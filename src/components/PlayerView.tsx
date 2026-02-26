@@ -10,7 +10,9 @@ import SensorToggle from './SensorToggle';
 import AutoMotionToggle from './AutoMotionToggle';
 import HapticToggle from './HapticToggle';
 import BreathingOverlay, { BreathingToggle } from './BreathingOverlay';
-import { getDefaultPatternId } from '@/lib/breathing-patterns';
+import { getDefaultPatternId, getBreathState, BREATHING_PATTERNS } from '@/lib/breathing-patterns';
+import SacredGeometry, { GeometryToggle } from './SacredGeometry';
+import type { GeometryType } from '@/lib/sacred-geometry';
 import AmbientSelector from './AmbientSelector';
 import SleepTimer from './SleepTimer';
 import PhaseIndicator from './PhaseIndicator';
@@ -99,6 +101,8 @@ export default function PlayerView({
   const [heartScale, setHeartScale] = useState(1);
   const [breathingActive, setBreathingActive] = useState(false);
   const [breathingPatternId, setBreathingPatternId] = useState(() => getDefaultPatternId(preset.category));
+  const [geometryActive, setGeometryActive] = useState(false);
+  const [geometryType, setGeometryType] = useState<GeometryType>('circles');
   const handleHeart = useCallback(() => {
     setHeartScale(1.3);
     setTimeout(() => setHeartScale(1), 200);
@@ -118,6 +122,16 @@ export default function PlayerView({
         beatFrequency={preset.beatFreq}
         isPlaying={isPlaying && !isPaused}
         color={preset.color}
+      />
+
+      {/* Sacred Geometry canvas — behind everything */}
+      <SacredGeometry
+        isActive={geometryActive && (isPlaying || isPaused)}
+        geometryType={geometryType}
+        beatFreq={listenBeatFreq || preset.beatFreq}
+        color={preset.color}
+        breathingScale={breathingActive ? undefined : null}
+        ambientVolume={ambientLayers.length > 0 ? ambientLayers.reduce((s, l) => s + l.volume, 0) / ambientLayers.length / 100 : 0}
       />
 
       {/* Breathing overlay — behind content */}
@@ -288,6 +302,17 @@ export default function PlayerView({
               onToggle={() => setBreathingActive(!breathingActive)}
               patternId={breathingPatternId}
               onPatternChange={setBreathingPatternId}
+              color={preset.color}
+            />
+          )}
+
+          {/* Sacred Geometry toggle */}
+          {(isPlaying || isPaused) && (
+            <GeometryToggle
+              isActive={geometryActive}
+              onToggle={() => setGeometryActive(!geometryActive)}
+              geometryType={geometryType}
+              onGeometryChange={setGeometryType}
               color={preset.color}
             />
           )}
