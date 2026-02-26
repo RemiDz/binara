@@ -26,6 +26,7 @@ import ProUpgrade from './ProUpgrade';
 import DailyRecommendation from './DailyRecommendation';
 import { SensorEngine } from '@/lib/sensor-engine';
 import { AutoMotionEngine } from '@/lib/auto-motion-engine';
+import { HapticEngine } from '@/lib/haptic-engine';
 import { getBrainwaveState } from '@/lib/brainwave-states';
 import { getCarrierTone } from '@/lib/carrier-tones';
 import { buildTimeline, TimelineRunner } from '@/lib/session-timeline';
@@ -67,6 +68,11 @@ export default function App() {
   const autoMotionEngineRef = useRef<AutoMotionEngine | null>(null);
   const autoMotionRafRef = useRef<number>(0);
   const [autoMotionIntensity, setAutoMotionIntensity] = useState(50);
+
+  // Haptic vibration state (Listen mode, Android only)
+  const [hapticActive, setHapticActive] = useState(false);
+  const [hapticIntensity, setHapticIntensity] = useState(50);
+  const hapticEngineRef = useRef<HapticEngine | null>(null);
 
   // Sleep timer state (Listen mode)
   const [sleepTimer, setSleepTimer] = useState<number | null>(null);
@@ -248,6 +254,31 @@ export default function App() {
 
           // Update oscillator frequency (setTargetAtTime handles smooth transitions)
           audio.setFrequency(preset.carrierFreq, preset.carrierFreq + phaseInfo.currentBeatFreq);
+
+          // Sync haptic engine with current beat freq and phase
+          if (hapticEngineRef.current && hapticActive) {
+            hapticEngineRef.current.setBeatFreq(phaseInfo.currentBeatFreq);
+            // Phase multiplier: ramp during ease-in/out, full during deep
+            const phaseMult = phaseInfo.phase === 'easeIn'
+              ? phaseInfo.totalProgress * 5 // ramp up over first 20%
+              : phaseInfo.phase === 'easeOut'
+              ? Math.max(0, (1 - phaseInfo.totalProgress) * 5) // ramp down in last 20%
+              : 1;
+            hapticEngineRef.current.setPhaseMultiplier(Math.min(1, phaseMult));
+          }
+        }
+
+        // Fade haptic during sleep timer fade
+        if (hapticEngineRef.current && hapticActive && sleepFadeStartedRef.current) {
+          const timer = sleepTimerRef.current;
+          if (timer !== null) {
+            const timerEndSecs = timerToSeconds(timer);
+            const fadeStartSecs = Math.max(0, timerEndSecs - 180);
+            const fadeDuration = timerEndSecs - fadeStartSecs;
+            const fadeElapsed = elapsed - fadeStartSecs;
+            const fadeProgress = Math.min(fadeElapsed / fadeDuration, 1);
+            hapticEngineRef.current.setPhaseMultiplier(1 - fadeProgress);
+          }
         }
       }, 1000);
     } else if (!state.showMixPlayer && !state.showAdvancedPlayer) {
@@ -395,6 +426,33 @@ export default function App() {
     autoMotionEngineRef.current?.setIntensity(value);
   }, []);
 
+  // ─── Haptic vibration handlers (Listen mode) ───
+
+  const stopHaptic = useCallback(() => {
+    hapticEngineRef.current?.stop();
+    setHapticActive(false);
+  }, []);
+
+  const handleHapticToggle = useCallback(() => {
+    if (hapticActive) {
+      stopHaptic();
+      return;
+    }
+    if (!HapticEngine.available) return;
+
+    if (!hapticEngineRef.current) {
+      hapticEngineRef.current = new HapticEngine();
+    }
+    const beatFreq = currentBeatFreqRef.current || state.activePreset?.beatFreq || 4;
+    hapticEngineRef.current.start(beatFreq, hapticIntensity / 100);
+    setHapticActive(true);
+  }, [hapticActive, hapticIntensity, state.activePreset, stopHaptic]);
+
+  const handleHapticIntensityChange = useCallback((value: number) => {
+    setHapticIntensity(value);
+    hapticEngineRef.current?.setIntensity(value / 100);
+  }, []);
+
   const handleListenSensorToggle = useCallback(async () => {
     if (listenSensorActive) {
       stopListenSensors();
@@ -468,13 +526,14 @@ export default function App() {
     localStorage.setItem('binara_sessions_count', String(count + 1));
     stopListenSensors();
     stopListenAutoMotion();
+    stopHaptic();
     currentBeatFreqRef.current = 0;
     sleepFadeStartedRef.current = false;
     audio.stopWithLongFade();
     audio.stopAllAmbientLayers();
     await audio.playCompletionChime();
     dispatch({ type: 'COMPLETE_SESSION' });
-  }, [audio, dispatch, state.sessionDuration, state.activePreset, stopListenSensors, stopListenAutoMotion]);
+  }, [audio, dispatch, state.sessionDuration, state.activePreset, stopListenSensors, stopListenAutoMotion, stopHaptic]);
 
   const handleSleepTimerComplete = useCallback(async () => {
     const timerVal = sleepTimerRef.current;
@@ -483,6 +542,7 @@ export default function App() {
     localStorage.setItem('binara_sessions_count', String(count + 1));
     stopListenSensors();
     stopListenAutoMotion();
+    stopHaptic();
 
     const isSleepPreset = state.activePreset?.category === 'sleep';
     const engine = audio.getEngine();
@@ -497,7 +557,7 @@ export default function App() {
 
     sleepFadeStartedRef.current = false;
     dispatch({ type: 'COMPLETE_SESSION' });
-  }, [audio, dispatch, state.activePreset, stopListenSensors, stopListenAutoMotion]);
+  }, [audio, dispatch, state.activePreset, stopListenSensors, stopListenAutoMotion, stopHaptic]);
 
   const handleSleepTimerChange = useCallback((newValue: number | null) => {
     const wasInFade = sleepFadeStartedRef.current;
@@ -564,6 +624,7 @@ export default function App() {
     trackEvent('Session Abandon', { mode: 'easy', elapsed: state.elapsedTime, total: state.sessionDuration * 60 });
     stopListenSensors();
     stopListenAutoMotion();
+    stopHaptic();
     sleepFadeStartedRef.current = false;
     currentBeatFreqRef.current = 0;
     audio.stop();
@@ -571,17 +632,22 @@ export default function App() {
     setTimeout(() => {
       dispatch({ type: 'STOP_SESSION' });
     }, 1600);
-  }, [audio, dispatch, stopListenSensors, stopListenAutoMotion]);
+  }, [audio, dispatch, stopListenSensors, stopListenAutoMotion, stopHaptic]);
 
   const handlePause = useCallback(async () => {
     await audio.pause();
+    hapticEngineRef.current?.stop();
     dispatch({ type: 'SET_IS_PAUSED', payload: true });
   }, [audio, dispatch]);
 
   const handleResume = useCallback(async () => {
     await audio.resume();
+    if (hapticActive && hapticEngineRef.current) {
+      const beatFreq = currentBeatFreqRef.current || state.activePreset?.beatFreq || 4;
+      hapticEngineRef.current.start(beatFreq, hapticIntensity / 100);
+    }
     dispatch({ type: 'SET_IS_PAUSED', payload: false });
-  }, [audio, dispatch]);
+  }, [audio, dispatch, hapticActive, hapticIntensity, state.activePreset]);
 
   const handleVolumeChange = useCallback((vol: number) => {
     dispatch({ type: 'SET_VOLUME', payload: vol });
@@ -1296,6 +1362,10 @@ export default function App() {
           autoMotionIntensity={autoMotionIntensity}
           onAutoMotionToggle={handleListenAutoMotionToggle}
           onAutoMotionIntensityChange={handleListenAutoMotionIntensityChange}
+          hapticActive={hapticActive}
+          hapticIntensity={hapticIntensity}
+          onHapticToggle={handleHapticToggle}
+          onHapticIntensityChange={handleHapticIntensityChange}
           isFavourited={playerFav}
           onToggleFavourite={handleTogglePlayerFavourite}
         />

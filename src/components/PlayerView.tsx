@@ -8,6 +8,7 @@ import SessionTimer from './SessionTimer';
 import VolumeSlider from './VolumeSlider';
 import SensorToggle from './SensorToggle';
 import AutoMotionToggle from './AutoMotionToggle';
+import HapticToggle from './HapticToggle';
 import AmbientSelector from './AmbientSelector';
 import SleepTimer from './SleepTimer';
 import PhaseIndicator from './PhaseIndicator';
@@ -46,6 +47,10 @@ interface PlayerViewProps {
   autoMotionIntensity?: number;
   onAutoMotionToggle?: () => void;
   onAutoMotionIntensityChange?: (value: number) => void;
+  hapticActive?: boolean;
+  hapticIntensity?: number;
+  onHapticToggle?: () => void;
+  onHapticIntensityChange?: (value: number) => void;
   isFavourited: boolean;
   onToggleFavourite: (presetId: string) => void;
 }
@@ -81,6 +86,10 @@ export default function PlayerView({
   autoMotionIntensity,
   onAutoMotionToggle,
   onAutoMotionIntensityChange,
+  hapticActive,
+  hapticIntensity,
+  onHapticToggle,
+  onHapticIntensityChange,
   isFavourited,
   onToggleFavourite,
 }: PlayerViewProps) {
@@ -246,6 +255,17 @@ export default function PlayerView({
               intensity={autoMotionIntensity ?? 50}
               onToggle={onAutoMotionToggle}
               onIntensityChange={onAutoMotionIntensityChange ?? (() => {})}
+              color={preset.color}
+            />
+          )}
+
+          {/* Haptic Pulse toggle (Android only) */}
+          {(isPlaying || isPaused) && onHapticToggle && (
+            <HapticToggle
+              isActive={hapticActive ?? false}
+              intensity={hapticIntensity ?? 50}
+              onToggle={onHapticToggle}
+              onIntensityChange={onHapticIntensityChange ?? (() => {})}
               color={preset.color}
             />
           )}
