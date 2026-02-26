@@ -15,7 +15,6 @@ export interface SessionLog {
   ambientLayers: string[];
   sensorsUsed: boolean;
   hapticUsed: boolean;
-  breathingPattern?: string;
   visualisation?: string;
 }
 
@@ -81,7 +80,6 @@ export function createSessionLog(opts: {
   ambientLayers: string[];
   sensorsUsed: boolean;
   hapticUsed: boolean;
-  breathingPattern?: string;
   visualisation?: string;
 }): SessionLog | null {
   const durationMinutes = Math.round(opts.elapsedSeconds / 60);
@@ -104,7 +102,6 @@ export function createSessionLog(opts: {
     ambientLayers: opts.ambientLayers,
     sensorsUsed: opts.sensorsUsed,
     hapticUsed: opts.hapticUsed,
-    breathingPattern: opts.breathingPattern,
     visualisation: opts.visualisation,
   };
 }

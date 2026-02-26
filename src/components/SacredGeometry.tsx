@@ -1,36 +1,43 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useProContext } from '@/context/ProContext';
-import { renderGeometry, resetParticles } from '@/lib/sacred-geometry';
-import type { GeometryType, GeometryState } from '@/lib/sacred-geometry';
+import {
+  renderFrame,
+  resetParticles,
+  getPulseRange,
+  getVisColour,
+} from '@/lib/sacred-geometry';
+import type { GeometryType, RenderState } from '@/lib/sacred-geometry';
+
+export type { GeometryType };
 
 interface SacredGeometryProps {
   isActive: boolean;
   geometryType: GeometryType;
   beatFreq: number;
-  color: string;
-  /** 0–1 breathing scale override (if breathing overlay active) */
-  breathingScale?: number | null;
-  /** radians rotation from motion sensors */
-  rotation?: number;
-  /** 0–1 ambient layer volume for particles */
-  ambientVolume?: number;
+  /** radians rotation from motion sensors / auto motion */
+  sensorRotation?: number;
+  /** whether any ambient layer is playing (doubles particle rate) */
+  ambientActive?: boolean;
 }
 
 export default function SacredGeometry({
   isActive,
   geometryType,
   beatFreq,
-  color,
-  breathingScale = null,
-  rotation = 0,
-  ambientVolume = 0,
+  sensorRotation = 0,
+  ambientActive = false,
 }: SacredGeometryProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rafRef = useRef(0);
-  const lastTimeRef = useRef(0);
+  const loopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startTimeRef = useRef(0);
+  const hiddenRef = useRef(false);
+
+  // Store latest props in refs for the render loop
+  const propsRef = useRef({ geometryType, beatFreq, sensorRotation, ambientActive });
+  propsRef.current = { geometryType, beatFreq, sensorRotation, ambientActive };
 
   useEffect(() => {
     if (!isActive) {
@@ -40,89 +47,142 @@ export default function SacredGeometry({
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     // Set canvas size with device pixel ratio
     const dpr = window.devicePixelRatio || 1;
     const updateSize = () => {
-      const rect = canvas.parentElement?.getBoundingClientRect();
-      if (!rect) return;
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     updateSize();
 
-    lastTimeRef.current = performance.now();
+    startTimeRef.current = performance.now() / 1000;
+    hiddenRef.current = false;
 
-    // Target ~30fps
-    let frameCount = 0;
+    // Adaptive performance: track frame times
+    let slowFrameCount = 0;
+    let reducedParticles = false;
 
-    const loop = () => {
-      frameCount++;
-      // Skip every other frame for ~30fps
-      if (frameCount % 2 !== 0) {
-        rafRef.current = requestAnimationFrame(loop);
+    // 30fps render loop using setTimeout
+    const FPS = 30;
+    const FRAME_INTERVAL = 1000 / FPS;
+
+    const renderLoop = () => {
+      if (hiddenRef.current) {
+        loopRef.current = null;
         return;
       }
 
-      const now = performance.now();
-      const dt = (now - lastTimeRef.current) / 1000;
-      lastTimeRef.current = now;
+      const frameStart = performance.now();
+      const time = frameStart / 1000 - startTimeRef.current;
+      const props = propsRef.current;
 
-      // Calculate beat-driven scale
-      let scale: number;
-      if (breathingScale !== null && breathingScale !== undefined) {
-        // Breathing takes priority
-        scale = 0.95 + breathingScale * 0.1;
-      } else {
-        // Beat-frequency pulsing
-        const t = now / 1000;
-        const pulseAmount = beatFreq <= 4 ? 0.05 : beatFreq <= 14 ? 0.02 : 0.01;
-        scale = 1 + Math.sin(t * beatFreq * Math.PI * 2) * pulseAmount;
-      }
+      // Beat-synced scale pulsing
+      const { min, max } = getPulseRange(props.beatFreq);
+      const pulseT = Math.sin(time * props.beatFreq * Math.PI * 2);
+      const scale = min + (max - min) * (pulseT * 0.5 + 0.5);
 
-      const state: GeometryState = {
-        geometryType,
+      // Glow intensity pulsing (offset from scale by PI/3)
+      const glowPulse = Math.sin(time * props.beatFreq * Math.PI * 2 + Math.PI / 3);
+      const glowIntensity = 0.5 + 0.5 * (glowPulse * 0.5 + 0.5); // 0.5 to 1.0
+
+      // Slow continuous rotation: 1 full revolution per 60 seconds
+      const baseRotation = (time / 60) * Math.PI * 2;
+      const rotation = baseRotation + props.sensorRotation;
+
+      const state: RenderState = {
+        geometryType: props.geometryType,
+        beatFreq: props.beatFreq,
+        time,
         scale,
+        glowIntensity,
         rotation,
-        colour: color,
-        glowColour: color,
-        glowIntensity: 0.5,
-        opacity: 0.2,
-        particleIntensity: ambientVolume,
+        ambientActive: props.ambientActive,
       };
 
-      renderGeometry(ctx, state, dt);
-      rafRef.current = requestAnimationFrame(loop);
+      renderFrame(ctx, state);
+
+      // Performance monitoring
+      const frameDuration = performance.now() - frameStart;
+      if (frameDuration > 40) {
+        slowFrameCount++;
+        if (slowFrameCount > 5 && !reducedParticles) {
+          reducedParticles = true;
+          // Reduce particle system (handled internally by render)
+        }
+      } else {
+        slowFrameCount = Math.max(0, slowFrameCount - 1);
+      }
+
+      loopRef.current = setTimeout(renderLoop, FRAME_INTERVAL);
     };
 
-    rafRef.current = requestAnimationFrame(loop);
+    loopRef.current = setTimeout(renderLoop, 0);
 
     // Resize handler
-    const resizeObserver = new ResizeObserver(updateSize);
-    if (canvas.parentElement) resizeObserver.observe(canvas.parentElement);
+    const handleResize = () => updateSize();
+    window.addEventListener('resize', handleResize);
 
     return () => {
-      cancelAnimationFrame(rafRef.current);
-      resizeObserver.disconnect();
+      if (loopRef.current !== null) {
+        clearTimeout(loopRef.current);
+        loopRef.current = null;
+      }
+      window.removeEventListener('resize', handleResize);
     };
-  }, [isActive, geometryType, beatFreq, color, breathingScale, rotation, ambientVolume]);
+  }, [isActive]);
 
-  // Stop rendering when page is hidden
+  // Stop rendering when page is hidden (battery saving)
   useEffect(() => {
     if (!isActive) return;
 
     const handleVisibility = () => {
       if (document.hidden) {
-        cancelAnimationFrame(rafRef.current);
+        hiddenRef.current = true;
+        if (loopRef.current !== null) {
+          clearTimeout(loopRef.current);
+          loopRef.current = null;
+        }
       } else {
-        // Will restart via the main effect's dependency on isActive
-        lastTimeRef.current = performance.now();
+        hiddenRef.current = false;
+        // Restart loop if it was stopped
+        if (loopRef.current === null && canvasRef.current) {
+          const ctx = canvasRef.current.getContext('2d');
+          if (ctx) {
+            startTimeRef.current = performance.now() / 1000;
+            const FPS = 30;
+            const renderLoop = () => {
+              if (hiddenRef.current) {
+                loopRef.current = null;
+                return;
+              }
+              const time = performance.now() / 1000 - startTimeRef.current;
+              const props = propsRef.current;
+              const { min, max } = getPulseRange(props.beatFreq);
+              const pulseT = Math.sin(time * props.beatFreq * Math.PI * 2);
+              const scale = min + (max - min) * (pulseT * 0.5 + 0.5);
+              const glowPulse = Math.sin(time * props.beatFreq * Math.PI * 2 + Math.PI / 3);
+              const glowIntensity = 0.5 + 0.5 * (glowPulse * 0.5 + 0.5);
+              const baseRotation = (time / 60) * Math.PI * 2;
+              const rotation = baseRotation + props.sensorRotation;
+              renderFrame(ctx, {
+                geometryType: props.geometryType,
+                beatFreq: props.beatFreq,
+                time, scale, glowIntensity, rotation,
+                ambientActive: props.ambientActive,
+              });
+              loopRef.current = setTimeout(renderLoop, 1000 / FPS);
+            };
+            loopRef.current = setTimeout(renderLoop, 0);
+          }
+        }
       }
     };
 
@@ -134,8 +194,13 @@ export default function SacredGeometry({
 
   return (
     <div
-      className="absolute inset-0 pointer-events-none"
-      style={{ zIndex: 0 }}
+      className="pointer-events-none"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 0,
+        background: '#050508',
+      }}
     >
       <canvas
         ref={canvasRef}
@@ -145,7 +210,7 @@ export default function SacredGeometry({
   );
 }
 
-// ─── Geometry Toggle + Selector ───
+// ─── Geometry Toggle + Pill Selector ───
 
 interface GeometryToggleProps {
   isActive: boolean;
@@ -156,9 +221,9 @@ interface GeometryToggleProps {
 }
 
 const GEOMETRY_OPTIONS: { type: GeometryType; label: string; pro: boolean }[] = [
-  { type: 'circles', label: 'Concentric Circles', pro: false },
-  { type: 'flower', label: 'Flower of Life', pro: true },
-  { type: 'metatron', label: "Metatron's Cube", pro: true },
+  { type: 'circles', label: 'Circles', pro: false },
+  { type: 'flower', label: 'Flower', pro: true },
+  { type: 'metatron', label: 'Metatron', pro: true },
 ];
 
 export function GeometryToggle({
@@ -169,7 +234,6 @@ export function GeometryToggle({
   color = '#7986cb',
 }: GeometryToggleProps) {
   const { isPro } = useProContext();
-  const [expanded, setExpanded] = useState(false);
 
   const handleGeometrySelect = (type: GeometryType, requiresPro: boolean) => {
     if (requiresPro && !isPro) {
@@ -190,10 +254,7 @@ export function GeometryToggle({
           transition: 'all 0.3s ease',
         }}
       >
-        <button
-          className="flex items-center gap-2.5 flex-1"
-          onClick={() => setExpanded(!expanded)}
-        >
+        <div className="flex items-center gap-2.5 flex-1">
           {/* Geometry icon */}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isActive ? color : 'rgba(255,255,255,0.35)'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'stroke 0.3s ease' }}>
             <circle cx="12" cy="12" r="10" />
@@ -214,7 +275,7 @@ export function GeometryToggle({
               style={{ background: color }}
             />
           )}
-        </button>
+        </div>
 
         {/* Toggle switch */}
         <button
@@ -235,9 +296,9 @@ export function GeometryToggle({
         </button>
       </div>
 
-      {/* Expandable geometry selector */}
+      {/* Pill geometry selector — always visible when active */}
       <AnimatePresence>
-        {expanded && isActive && (
+        {isActive && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -245,39 +306,32 @@ export function GeometryToggle({
             transition={{ duration: 0.2 }}
             className="overflow-hidden px-3"
           >
-            <div className="flex items-center gap-2 py-1 flex-wrap">
-              <span
-                className="font-[family-name:var(--font-inter)] text-[11px]"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                Style
-              </span>
-              <div className="flex gap-1.5 flex-wrap">
-                {GEOMETRY_OPTIONS.map((opt) => {
-                  const locked = opt.pro && !isPro;
-                  return (
-                    <button
-                      key={opt.type}
-                      onClick={() => handleGeometrySelect(opt.type, opt.pro)}
-                      className="px-2 py-0.5 rounded-md text-[10px] font-[family-name:var(--font-inter)] transition-all flex items-center gap-1"
-                      style={{
-                        background: geometryType === opt.type && !locked ? `${color}20` : 'rgba(255,255,255,0.05)',
-                        border: `1px solid ${geometryType === opt.type && !locked ? `${color}40` : 'rgba(255,255,255,0.08)'}`,
-                        color: locked ? 'var(--text-muted)' : geometryType === opt.type ? color : 'var(--text-muted)',
-                        opacity: locked ? 0.5 : 1,
-                      }}
-                    >
-                      {locked && (
-                        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="3" y="11" width="18" height="11" rx="2" />
-                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                        </svg>
-                      )}
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="flex items-center gap-2 py-1">
+              {GEOMETRY_OPTIONS.map((opt) => {
+                const locked = opt.pro && !isPro;
+                const selected = geometryType === opt.type && !locked;
+                return (
+                  <button
+                    key={opt.type}
+                    onClick={() => handleGeometrySelect(opt.type, opt.pro)}
+                    className="flex-1 py-1.5 rounded-lg text-[11px] font-[family-name:var(--font-inter)] font-medium transition-all flex items-center justify-center gap-1"
+                    style={{
+                      background: selected ? `${color}20` : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${selected ? `${color}40` : 'rgba(255,255,255,0.08)'}`,
+                      color: locked ? 'var(--text-muted)' : selected ? color : 'var(--text-secondary)',
+                      opacity: locked ? 0.5 : 1,
+                    }}
+                  >
+                    {locked && (
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    )}
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
           </motion.div>
         )}

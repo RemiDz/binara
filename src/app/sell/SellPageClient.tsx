@@ -186,7 +186,6 @@ function FeatureTable() {
     ['Mix mode — Custom carrier tone', false, true],
     ['Phone Motion Sensors', false, true],
     ['Stillness detection + overtone reward', false, true],
-    ['Breathing-sync audio modulation', false, true],
   ] as const;
 
   return (
