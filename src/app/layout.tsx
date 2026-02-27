@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import Script from "next/script";
+
 import { Playfair_Display, Inter, JetBrains_Mono, Cormorant_Garamond } from "next/font/google";
 import { AppProvider } from "@/context/AppContext";
 import { ProProvider } from "@/context/ProContext";
@@ -134,12 +134,8 @@ export default function RootLayout({
           }}
         />
         {/* Privacy-friendly analytics by Plausible */}
-        <Script
-          defer
-          data-domain="binara.app"
-          src="https://plausible.io/js/script.js"
-          strategy="afterInteractive"
-        />
+        <script async src="https://plausible.io/js/pa-hDSusz4l1UN40m8gFZsnn.js"></script>
+        <script dangerouslySetInnerHTML={{ __html: `window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()` }} />
       </head>
       <body
         className={`${playfair.variable} ${inter.variable} ${jetbrains.variable} ${cormorant.variable} antialiased`}

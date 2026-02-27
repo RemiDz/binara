@@ -1,16 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cd /c/Users/rdzingel/Documents/MY_APPS/HARMONIC_WAVES/binara.app && echo \"N\" | npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --no-git --use-npm --import-alias \"@/*\" 2>&1)",
-      "Bash(tail:*)",
-      "Bash(head:*)",
-      "Bash(cd /c/Users/rdzingel/Documents/MY_APPS/HARMONIC_WAVES/binara.app && npx tsc --noEmit 2>&1)",
-      "Bash(curl:*)",
-      "Bash(echo Module check via bundle:*)",
-      "Bash(ls:*)",
-      "Bash(cd:*)",
-      "Bash(gh auth:*)",
-      "Bash(echo gh not found:*)"
+      "Bash(*)"
     ]
   }
 }
