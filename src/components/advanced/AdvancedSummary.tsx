@@ -1,14 +1,7 @@
 'use client';
 
 import type { AdvancedSessionConfig } from '@/types';
-
-function getBrainwaveLabel(freq: number): string {
-  if (freq <= 4) return 'Delta';
-  if (freq <= 8) return 'Theta';
-  if (freq <= 12) return 'Alpha';
-  if (freq <= 30) return 'Beta';
-  return 'Gamma';
-}
+import { getBrainwaveLabel } from '@/lib/brainwave-states';
 
 interface AdvancedSummaryProps {
   config: AdvancedSessionConfig;

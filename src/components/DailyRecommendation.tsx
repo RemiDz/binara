@@ -15,14 +15,16 @@ export default function DailyRecommendation({ onSelect }: DailyRecommendationPro
   const [dismissed, setDismissed] = useState(false);
   const rec = useMemo(() => getDailyRecommendation(), []);
 
-  if (!rec || dismissed) return null;
+  if (!rec) return null;
 
   const { preset, label } = rec;
   const wave = WAVE_STATES[preset.brainwaveState];
 
   return (
     <AnimatePresence>
+      {!dismissed && (
       <motion.div
+        key="daily-rec"
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -10 }}
@@ -155,6 +157,7 @@ export default function DailyRecommendation({ onSelect }: DailyRecommendationPro
           </div>
         </div>
       </motion.div>
+      )}
     </AnimatePresence>
   );
 }

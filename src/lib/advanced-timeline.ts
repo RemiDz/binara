@@ -26,21 +26,22 @@ export function buildAdvancedTimeline(config: AdvancedSessionConfig): {
   const layerIds = config.layers.map((l) => l.id);
   const defaultBeatFreqs = config.layers.map((l) => l.beatFreq);
 
-  const phases: ResolvedPhase[] = config.timeline.map((phase, i) => {
-    // Start freqs: previous phase's end freqs, or layer defaults for first phase
-    const prevPhase = config.timeline[i - 1];
-    const startBeatFreqs = prevPhase
-      ? layerIds.map(() => prevPhase.beatFreq)
-      : defaultBeatFreqs;
+  const phases: ResolvedPhase[] = [];
+  for (let i = 0; i < config.timeline.length; i++) {
+    const phase = config.timeline[i];
+    // Start freqs: previous resolved phase's end freqs, or layer defaults for first phase
+    const startBeatFreqs = i === 0
+      ? defaultBeatFreqs
+      : phases[i - 1].endBeatFreqs;
 
-    return {
+    phases.push({
       name: phase.name,
       durationSec: phase.duration * 60,
       startBeatFreqs,
       endBeatFreqs: layerIds.map(() => phase.beatFreq),
       easing: phase.easing,
-    };
-  });
+    });
+  }
 
   const totalDuration = phases.reduce((sum, p) => sum + p.durationSec, 0);
   return { phases, totalDuration };
@@ -53,15 +54,29 @@ export class AdvancedTimelineRunner {
   private layerIds: string[];
   private lastBeatFreqs: number[] = [];
 
+  private carrierFreqs: number[];
+
   constructor(config: AdvancedSessionConfig, engine: AudioEngine) {
     const timeline = buildAdvancedTimeline(config);
     this.phases = timeline.phases;
     this.totalDuration = timeline.totalDuration;
     this.engine = engine;
     this.layerIds = config.layers.map((l) => l.id);
+    this.carrierFreqs = config.layers.map((l) => l.carrierFreq);
   }
 
   tick(elapsedSeconds: number): AdvancedTickResult {
+    if (this.phases.length === 0) {
+      return {
+        currentPhaseIndex: 0,
+        currentPhaseName: '',
+        phaseProgress: 1,
+        totalProgress: 1,
+        currentBeatFreqs: [],
+        isComplete: true,
+      };
+    }
+
     if (elapsedSeconds >= this.totalDuration) {
       const lastPhase = this.phases[this.phases.length - 1];
       return {
@@ -92,15 +107,8 @@ export class AdvancedTimelineRunner {
           const freq = currentBeatFreqs[j];
           if (!this.lastBeatFreqs[j] || Math.abs(freq - this.lastBeatFreqs[j]) > 0.01) {
             const layerId = this.layerIds[j];
-            // We need carrier freq from the layer — get it from the engine's first phase start
-            const carrierFreq = phase.startBeatFreqs[j] > 0
-              ? this.engine.playing ? undefined : undefined
-              : undefined;
-            // We just update the beat freq, the carrier stays the same
-            // setBeatLayerFrequency needs carrier+beat, but carrier doesn't change
-            // So we skip carrier update here — timeline only controls beat freq
-            void carrierFreq;
-            void layerId;
+            const carrierFreq = this.carrierFreqs[j] ?? 200;
+            this.engine.setBeatLayerFrequency(layerId, carrierFreq, freq);
           }
         }
         this.lastBeatFreqs = currentBeatFreqs;

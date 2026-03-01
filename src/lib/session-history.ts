@@ -52,13 +52,15 @@ export function saveSessionLog(log: SessionLog): void {
 
   // Prune if localStorage is getting large (>4MB for this key)
   const json = JSON.stringify(history);
-  if (json.length > 4_000_000) {
-    const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
-    const pruned = history.filter(s => s.timestamp > oneYearAgo);
-    localStorage.setItem(LS_KEY, JSON.stringify(pruned));
-  } else {
-    localStorage.setItem(LS_KEY, json);
-  }
+  try {
+    if (json.length > 4_000_000) {
+      const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
+      const pruned = history.filter(s => s.timestamp > oneYearAgo);
+      localStorage.setItem(LS_KEY, JSON.stringify(pruned));
+    } else {
+      localStorage.setItem(LS_KEY, json);
+    }
+  } catch { /* QuotaExceededError — silently drop */ }
 }
 
 export function clearHistory(): void {

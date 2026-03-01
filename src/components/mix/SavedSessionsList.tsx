@@ -43,13 +43,17 @@ export default function SavedSessionsList({ sessions, onPlay, onDelete, onLoad }
           const total = s.timeline.easeIn + s.timeline.deep + s.timeline.easeOut;
 
           return (
-            <button
+            <div
               key={s.id}
+              role="button"
+              tabIndex={0}
               onClick={() => onLoad(s)}
+              onKeyDown={(e) => { if (e.key === 'Enter') onLoad(s); }}
               className="flex-shrink-0 w-52 p-3 rounded-xl text-left transition-all active:scale-[0.98]"
               style={{
                 background: 'var(--glass-bg)',
                 border: `1px solid ${bwState?.color ?? 'var(--glass-border)'}30`,
+                cursor: 'pointer',
               }}
             >
               <p
@@ -59,10 +63,10 @@ export default function SavedSessionsList({ sessions, onPlay, onDelete, onLoad }
                 {s.name}
               </p>
               <p className="font-[family-name:var(--font-inter)] text-[11px] mt-1" style={{ color: bwState?.color ?? 'var(--text-secondary)' }}>
-                {"● "}{bwState?.label} {"·"} {bwState?.beatFreq} Hz
+                {"● "}{bwState?.label} {"·"} {s.customBeatFreq ?? bwState?.beatFreq} Hz
               </p>
               <p className="font-[family-name:var(--font-inter)] text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                {"🎵 "}{carrier?.label} {"·"} {carrier?.frequency} Hz
+                {"🎵 "}{carrier?.label} {"·"} {s.customCarrierFreq ?? carrier?.frequency} Hz
               </p>
               {s.ambientLayers.length > 0 && (
                 <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
@@ -96,7 +100,7 @@ export default function SavedSessionsList({ sessions, onPlay, onDelete, onLoad }
                   {"🗑"}
                 </button>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

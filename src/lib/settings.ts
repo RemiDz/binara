@@ -29,7 +29,7 @@ export function getSettings(): AppSettings {
 }
 
 export function saveSettings(settings: AppSettings): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch { /* QuotaExceededError */ }
 }
 
 export function getDefaultSettings(): AppSettings {

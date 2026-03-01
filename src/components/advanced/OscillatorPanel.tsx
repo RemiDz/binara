@@ -3,6 +3,7 @@
 import Panel from './Panel';
 import Slider from '../ui/Slider';
 import type { BeatLayer, AdvancedWaveform } from '@/types';
+import { getBrainwaveColor, getBrainwaveLabel } from '@/lib/brainwave-states';
 
 const WAVEFORMS: { id: AdvancedWaveform; label: string }[] = [
   { id: 'sine', label: 'Sin' },
@@ -10,22 +11,6 @@ const WAVEFORMS: { id: AdvancedWaveform; label: string }[] = [
   { id: 'sawtooth', label: 'Saw' },
   { id: 'square', label: 'Sq' },
 ];
-
-function getBrainwaveLabel(freq: number): string {
-  if (freq <= 4) return 'Delta';
-  if (freq <= 8) return 'Theta';
-  if (freq <= 12) return 'Alpha';
-  if (freq <= 30) return 'Beta';
-  return 'Gamma';
-}
-
-function getBrainwaveColor(freq: number): string {
-  if (freq <= 4) return '#1a237e';
-  if (freq <= 8) return '#7986cb';
-  if (freq <= 12) return '#4fc3f7';
-  if (freq <= 30) return '#ffab40';
-  return '#e040fb';
-}
 
 interface OscillatorPanelProps {
   layers: BeatLayer[];
@@ -91,7 +76,7 @@ export default function OscillatorPanel({ layers, isPro, onUpdateLayer, onAddLay
               label="Beat Frequency"
               value={layer.beatFreq}
               min={0.5}
-              max={50}
+              max={100}
               step={0.5}
               suffix="Hz"
               color={getBrainwaveColor(layer.beatFreq)}

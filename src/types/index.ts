@@ -1,8 +1,6 @@
-import type { AdvancedSessionConfig as _AdvancedSessionConfig } from './advanced';
+import type { AdvancedSessionConfig } from './advanced';
 export type { AdvancedWaveform, EasingType, LFOTarget, FilterType, IsochronicShape, BeatLayer, StereoConfig, LFOConfig, IsochronicConfig, FilterConfig, AdvancedTimelinePhase, AdvancedSessionConfig, SavedAdvancedSession } from './advanced';
 export { createDefaultBeatLayer, createDefaultAdvancedConfig } from './advanced';
-
-type AdvancedSessionConfig = _AdvancedSessionConfig;
 
 export type BrainwaveState = 'delta' | 'theta' | 'alpha' | 'beta' | 'gamma';
 

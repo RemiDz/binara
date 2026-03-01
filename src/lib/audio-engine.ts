@@ -66,6 +66,8 @@ export class AudioEngine {
   private overtoneLeft: OscillatorNode | null = null;
   private overtoneRight: OscillatorNode | null = null;
   private overtoneGain: GainNode | null = null;
+  private overtoneGainL: GainNode | null = null;
+  private overtoneGainR: GainNode | null = null;
 
   // Preview mode flag
   private _isPreviewMode = false;
@@ -83,6 +85,8 @@ export class AudioEngine {
   private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
   private silentAudio: HTMLAudioElement | null = null;
   private _visibilityHandlerSetup = false;
+  private _visibilityHandler: (() => void) | null = null;
+  private _focusHandler: (() => void) | null = null;
 
   // Media session callbacks
   private _mediaSessionCallbacks: {
@@ -99,7 +103,12 @@ export class AudioEngine {
     if (this.ctx) return;
 
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    this.ctx = new AudioCtx();
+    if (!AudioCtx) throw new Error('Web Audio API is not supported in this browser');
+    try {
+      this.ctx = new AudioCtx();
+    } catch (e) {
+      throw new Error(`Failed to create AudioContext: ${e instanceof Error ? e.message : 'unknown error'}`);
+    }
 
     if (this.ctx.state === 'suspended') {
       await this.ctx.resume();
@@ -171,7 +180,21 @@ export class AudioEngine {
   async play(config: AudioEngineConfig): Promise<void> {
     await this.ensureRunning();
 
-    if (this._isPlaying) this.stopImmediate();
+    if (this._isPlaying) {
+      // Brief fade-out before stop to prevent click/pop
+      if (this.ctx && this.gainLeft && this.gainRight) {
+        const now = this.ctx.currentTime;
+        this.gainLeft.gain.cancelScheduledValues(now);
+        this.gainLeft.gain.setTargetAtTime(0, now, 0.01);
+        this.gainRight.gain.cancelScheduledValues(now);
+        this.gainRight.gain.setTargetAtTime(0, now, 0.01);
+      }
+      if (this._advancedMode) {
+        this.stopAdvancedImmediate();
+      } else {
+        this.stopImmediate();
+      }
+    }
 
     const ctx = this.ctx!;
 
@@ -206,8 +229,13 @@ export class AudioEngine {
     // Fade in using setTargetAtTime (timing-resilient)
     const now = ctx.currentTime;
     const tau = config.fadeInDuration / 5;
-    this.gainLeft.gain.setTargetAtTime(0.5, now, tau);
-    this.gainRight.gain.setTargetAtTime(0.5, now, tau);
+    if (tau > 0) {
+      this.gainLeft.gain.setTargetAtTime(0.5, now, tau);
+      this.gainRight.gain.setTargetAtTime(0.5, now, tau);
+    } else {
+      this.gainLeft.gain.setValueAtTime(0.5, now);
+      this.gainRight.gain.setValueAtTime(0.5, now);
+    }
 
     this.carrierLeft.start();
     this.carrierRight.start();
@@ -225,6 +253,8 @@ export class AudioEngine {
 
   stop(): void {
     if (!this._isPlaying || !this.ctx) return;
+    // Clear any existing stop timeout to prevent orphaned callbacks
+    if (this.stopTimeout) { clearTimeout(this.stopTimeout); this.stopTimeout = null; }
     const now = this.ctx.currentTime;
     const tau = 0.3;
 
@@ -236,6 +266,8 @@ export class AudioEngine {
 
   stopWithLongFade(): void {
     if (!this._isPlaying || !this.ctx) return;
+    // Clear any existing stop timeout to prevent orphaned callbacks
+    if (this.stopTimeout) { clearTimeout(this.stopTimeout); this.stopTimeout = null; }
     const now = this.ctx.currentTime;
     const tau = 0.6;
 
@@ -293,9 +325,13 @@ export class AudioEngine {
     this.overtoneLeft?.disconnect();
     this.overtoneRight?.disconnect();
     this.overtoneGain?.disconnect();
+    this.overtoneGainL?.disconnect();
+    this.overtoneGainR?.disconnect();
     this.overtoneLeft = null;
     this.overtoneRight = null;
     this.overtoneGain = null;
+    this.overtoneGainL = null;
+    this.overtoneGainR = null;
 
     this.stopAllAmbientLayersImmediate();
 
@@ -336,7 +372,12 @@ export class AudioEngine {
   rampCarrierFrequency(targetLeft: number, targetRight: number, durationSeconds: number): void {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
+    // Cancel pending schedules before ramping to prevent conflicting automation
+    this.carrierLeft?.frequency.cancelScheduledValues(now);
+    this.carrierLeft?.frequency.setValueAtTime(this.carrierLeft.frequency.value, now);
     this.carrierLeft?.frequency.linearRampToValueAtTime(targetLeft, now + durationSeconds);
+    this.carrierRight?.frequency.cancelScheduledValues(now);
+    this.carrierRight?.frequency.setValueAtTime(this.carrierRight.frequency.value, now);
     this.carrierRight?.frequency.linearRampToValueAtTime(targetRight, now + durationSeconds);
   }
 
@@ -351,6 +392,23 @@ export class AudioEngine {
   }
 
   setWaveform(waveform: OscillatorType): void {
+    if (!this.ctx || !this.gainLeft || !this.gainRight) {
+      if (this.carrierLeft) this.carrierLeft.type = waveform;
+      if (this.carrierRight) this.carrierRight.type = waveform;
+      return;
+    }
+    const now = this.ctx.currentTime;
+    const leftVal = this.gainLeft.gain.value;
+    const rightVal = this.gainRight.gain.value;
+    // Dip gain briefly to mask waveform transition click
+    this.gainLeft.gain.cancelScheduledValues(now);
+    this.gainLeft.gain.setValueAtTime(leftVal, now);
+    this.gainLeft.gain.linearRampToValueAtTime(0, now + 0.01);
+    this.gainLeft.gain.linearRampToValueAtTime(leftVal, now + 0.02);
+    this.gainRight.gain.cancelScheduledValues(now);
+    this.gainRight.gain.setValueAtTime(rightVal, now);
+    this.gainRight.gain.linearRampToValueAtTime(0, now + 0.01);
+    this.gainRight.gain.linearRampToValueAtTime(rightVal, now + 0.02);
     if (this.carrierLeft) this.carrierLeft.type = waveform;
     if (this.carrierRight) this.carrierRight.type = waveform;
   }
@@ -394,16 +452,16 @@ export class AudioEngine {
 
     // Route through the same panner path as carriers
     if (this.panLeft) {
-      const overtoneGainL = ctx.createGain();
-      overtoneGainL.gain.value = 0.5;
-      this.overtoneLeft.connect(overtoneGainL);
-      overtoneGainL.connect(this.panLeft);
+      this.overtoneGainL = ctx.createGain();
+      this.overtoneGainL.gain.value = 0.5;
+      this.overtoneLeft.connect(this.overtoneGainL);
+      this.overtoneGainL.connect(this.panLeft);
     }
     if (this.panRight) {
-      const overtoneGainR = ctx.createGain();
-      overtoneGainR.gain.value = 0.5;
-      this.overtoneRight.connect(overtoneGainR);
-      overtoneGainR.connect(this.panRight);
+      this.overtoneGainR = ctx.createGain();
+      this.overtoneGainR.gain.value = 0.5;
+      this.overtoneRight.connect(this.overtoneGainR);
+      this.overtoneGainR.connect(this.panRight);
     }
 
     // Also connect through the overtone gain for master volume control
@@ -429,10 +487,14 @@ export class AudioEngine {
     const oL = this.overtoneLeft;
     const oR = this.overtoneRight;
     const oG = this.overtoneGain;
+    const oGL = this.overtoneGainL;
+    const oGR = this.overtoneGainR;
 
     this.overtoneLeft = null;
     this.overtoneRight = null;
     this.overtoneGain = null;
+    this.overtoneGainL = null;
+    this.overtoneGainR = null;
 
     setTimeout(() => {
       try { oL?.stop(); } catch { /* */ }
@@ -440,6 +502,8 @@ export class AudioEngine {
       oL?.disconnect();
       oR?.disconnect();
       oG?.disconnect();
+      oGL?.disconnect();
+      oGR?.disconnect();
     }, 600);
   }
 
@@ -527,6 +591,7 @@ export class AudioEngine {
     gain.connect(this.masterGain || ctx.destination);
     osc.start();
     osc.stop(now + durationSec + 0.01);
+    osc.onended = () => { gain.disconnect(); osc.disconnect(); };
   }
 
   // ═══════════════════════════════════════════════
@@ -564,6 +629,7 @@ export class AudioEngine {
       gain.connect(this.masterGain || ctx.destination);
       osc.start(startAt);
       osc.stop(startAt + 0.5);
+      osc.onended = () => { gain.disconnect(); osc.disconnect(); };
     }
   }
 
@@ -669,7 +735,13 @@ export class AudioEngine {
 
   async playAdvanced(layers: BeatLayer[]): Promise<void> {
     await this.ensureRunning();
-    if (this._isPlaying) this.stopImmediate();
+    if (this._isPlaying) {
+      if (this._advancedMode) {
+        this.stopAdvancedImmediate();
+      } else {
+        this.stopImmediate();
+      }
+    }
     this.reconnectMasterChain();
     this.buildBeatLayers(layers);
     this.startKeepAlive();
@@ -1109,24 +1181,36 @@ export class AudioEngine {
     if (this._visibilityHandlerSetup) return;
     this._visibilityHandlerSetup = true;
 
-    const handleResume = () => {
+    this._focusHandler = () => {
       if (this._isPlaying && !this._isPaused) this.resumeFromBackground();
     };
 
-    document.addEventListener('visibilitychange', () => {
+    this._visibilityHandler = () => {
       if (document.visibilityState === 'visible') {
-        handleResume();
+        if (this._isPlaying && !this._isPaused) this.resumeFromBackground();
       } else if (document.visibilityState === 'hidden') {
-        // Proactively resume AudioContext when going to background
-        // to prevent the browser from suspending it
         if (this._isPlaying && !this._isPaused && this.ctx) {
           if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
             this.ctx.resume().catch(() => {});
           }
         }
       }
-    });
-    window.addEventListener('focus', handleResume);
+    };
+
+    document.addEventListener('visibilitychange', this._visibilityHandler);
+    window.addEventListener('focus', this._focusHandler);
+  }
+
+  private removeVisibilityHandler(): void {
+    if (this._visibilityHandler) {
+      document.removeEventListener('visibilitychange', this._visibilityHandler);
+      this._visibilityHandler = null;
+    }
+    if (this._focusHandler) {
+      window.removeEventListener('focus', this._focusHandler);
+      this._focusHandler = null;
+    }
+    this._visibilityHandlerSetup = false;
   }
 
   async resumeFromBackground(): Promise<void> {
@@ -1144,6 +1228,7 @@ export class AudioEngine {
         const source = this.ctx.createBufferSource();
         source.buffer = buffer;
         source.connect(this.ctx.destination);
+        source.onended = () => { source.disconnect(); };
         source.start();
       }
     }, 10000);
@@ -1223,6 +1308,7 @@ export class AudioEngine {
   // ═══════════════════════════════════════════════
 
   destroy(): void {
+    this.removeVisibilityHandler();
     if (this._advancedMode) { this.stopAdvancedImmediate(); } else { this.stopImmediate(); }
     if (this.compressor) { this.compressor.disconnect(); this.compressor = null; }
     if (this.masterGain) { this.masterGain.disconnect(); this.masterGain = null; }

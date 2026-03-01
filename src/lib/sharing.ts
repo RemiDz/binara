@@ -102,6 +102,21 @@ function parseMixFromUrl(): SharedSession | null {
   return { type: 'mix', config };
 }
 
+function isValidAdvancedConfig(c: unknown): boolean {
+  if (!c || typeof c !== 'object') return false;
+  const obj = c as Record<string, unknown>;
+  return Array.isArray(obj.layers) && obj.layers.length > 0
+    && Array.isArray(obj.timeline);
+}
+
+function isValidMixConfig(c: unknown): boolean {
+  if (!c || typeof c !== 'object') return false;
+  const obj = c as Record<string, unknown>;
+  return typeof obj.stateId === 'string'
+    && typeof obj.carrierId === 'string'
+    && obj.timeline != null && typeof obj.timeline === 'object';
+}
+
 function parseAdvancedFromUrl(): SharedSession | null {
   const params = new URLSearchParams(window.location.search);
   const encoded = params.get('c');
@@ -110,7 +125,7 @@ function parseAdvancedFromUrl(): SharedSession | null {
   try {
     const json = decodeURIComponent(atob(encoded));
     const parsed = JSON.parse(json);
-    if (parsed?.type === 'advanced' && parsed.config) {
+    if (parsed?.type === 'advanced' && isValidAdvancedConfig(parsed.config)) {
       return { type: 'advanced', config: parsed.config };
     }
   } catch { /* invalid encoding */ }
@@ -127,8 +142,11 @@ function getSharedSessionFromHash(): SharedSession | null {
     const encoded = hash.slice(3);
     const json = decodeURIComponent(atob(encoded));
     const parsed = JSON.parse(json);
-    if (parsed && (parsed.type === 'advanced' || parsed.type === 'mix') && parsed.config) {
-      return parsed as SharedSession;
+    if (parsed?.type === 'advanced' && isValidAdvancedConfig(parsed.config)) {
+      return { type: 'advanced', config: parsed.config };
+    }
+    if (parsed?.type === 'mix' && isValidMixConfig(parsed.config)) {
+      return { type: 'mix', config: parsed.config as MixConfig };
     }
   } catch { /* invalid */ }
 

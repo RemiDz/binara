@@ -20,9 +20,7 @@ export default function ProGate({ feature, isPro: isProProp, children, onUpgrade
 
   return (
     <div className="relative">
-      <div className="opacity-40 pointer-events-none select-none">
-        {children}
-      </div>
+      {/* Children not rendered for non-Pro users — prevents DOM access bypass */}
       <div className="absolute inset-0 flex items-center justify-center z-10">
         <div
           className="flex flex-col items-center gap-1.5 px-4 py-3 rounded-2xl"

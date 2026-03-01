@@ -63,7 +63,7 @@ export default function MixPlayer({
   const bwState = getBrainwaveState(config.stateId);
   const carrier = getCarrierTone(config.carrierId);
   const stateColor = bwState?.color ?? '#4fc3f7';
-  const displayBeatFreq = mixBeatFreq > 0 ? mixBeatFreq : bwState?.beatFreq ?? 10;
+  const displayBeatFreq = mixBeatFreq > 0 ? mixBeatFreq : config.customBeatFreq ?? bwState?.beatFreq ?? 10;
 
   return (
     <motion.div
@@ -133,7 +133,7 @@ export default function MixPlayer({
               className="font-[family-name:var(--font-jetbrains)] text-[11px]"
               style={{ color: stateColor }}
             >
-              {carrier?.label} {"·"} {carrier?.frequency} Hz {"·"} Beat: {displayBeatFreq.toFixed(1)} Hz
+              {carrier?.label} {"·"} {config.customCarrierFreq ?? carrier?.frequency} Hz {"·"} Beat: {displayBeatFreq.toFixed(1)} Hz
             </p>
           </div>
 

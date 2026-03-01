@@ -39,40 +39,14 @@ export default function SacredGeometry({
   const propsRef = useRef({ geometryType, beatFreq, sensorRotation, ambientActive });
   propsRef.current = { geometryType, beatFreq, sensorRotation, ambientActive };
 
-  useEffect(() => {
-    if (!isActive) {
-      resetParticles();
-      return;
-    }
+  // 30fps render loop using setTimeout — shared between main effect and visibility handler
+  const FPS = 30;
+  const FRAME_INTERVAL = 1000 / FPS;
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Set canvas size with device pixel ratio
-    const dpr = window.devicePixelRatio || 1;
-    const updateSize = () => {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      canvas.style.width = `${w}px`;
-      canvas.style.height = `${h}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-    updateSize();
-
-    startTimeRef.current = performance.now() / 1000;
-    hiddenRef.current = false;
-
+  const startRenderLoop = useCallback((ctx: CanvasRenderingContext2D) => {
     // Adaptive performance: track frame times
     let slowFrameCount = 0;
     let reducedParticles = false;
-
-    // 30fps render loop using setTimeout
-    const FPS = 30;
-    const FRAME_INTERVAL = 1000 / FPS;
 
     const renderLoop = () => {
       if (hiddenRef.current) {
@@ -83,6 +57,8 @@ export default function SacredGeometry({
       const frameStart = performance.now();
       const time = frameStart / 1000 - startTimeRef.current;
       const props = propsRef.current;
+      const w = ctx.canvas.width / (window.devicePixelRatio || 1);
+      const h = ctx.canvas.height / (window.devicePixelRatio || 1);
 
       // Beat-synced scale pulsing
       const { min, max } = getPulseRange(props.beatFreq);
@@ -115,7 +91,6 @@ export default function SacredGeometry({
         slowFrameCount++;
         if (slowFrameCount > 5 && !reducedParticles) {
           reducedParticles = true;
-          // Reduce particle system (handled internally by render)
         }
       } else {
         slowFrameCount = Math.max(0, slowFrameCount - 1);
@@ -125,6 +100,36 @@ export default function SacredGeometry({
     };
 
     loopRef.current = setTimeout(renderLoop, 0);
+  }, [FRAME_INTERVAL]);
+
+  useEffect(() => {
+    if (!isActive) {
+      resetParticles();
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set canvas size with device pixel ratio
+    const dpr = window.devicePixelRatio || 1;
+    const updateSize = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    updateSize();
+
+    startTimeRef.current = performance.now() / 1000;
+    hiddenRef.current = false;
+
+    startRenderLoop(ctx);
 
     // Resize handler
     const handleResize = () => updateSize();
@@ -137,7 +142,7 @@ export default function SacredGeometry({
       }
       window.removeEventListener('resize', handleResize);
     };
-  }, [isActive]);
+  }, [isActive, startRenderLoop]);
 
   // Stop rendering when page is hidden (battery saving)
   useEffect(() => {
@@ -157,30 +162,7 @@ export default function SacredGeometry({
           const ctx = canvasRef.current.getContext('2d');
           if (ctx) {
             startTimeRef.current = performance.now() / 1000;
-            const FPS = 30;
-            const renderLoop = () => {
-              if (hiddenRef.current) {
-                loopRef.current = null;
-                return;
-              }
-              const time = performance.now() / 1000 - startTimeRef.current;
-              const props = propsRef.current;
-              const { min, max } = getPulseRange(props.beatFreq);
-              const pulseT = Math.sin(time * props.beatFreq * Math.PI * 2);
-              const scale = min + (max - min) * (pulseT * 0.5 + 0.5);
-              const glowPulse = Math.sin(time * props.beatFreq * Math.PI * 2 + Math.PI / 3);
-              const glowIntensity = 0.5 + 0.5 * (glowPulse * 0.5 + 0.5);
-              const baseRotation = (time / 60) * Math.PI * 2;
-              const rotation = baseRotation + props.sensorRotation;
-              renderFrame(ctx, {
-                geometryType: props.geometryType,
-                beatFreq: props.beatFreq,
-                time, scale, glowIntensity, rotation,
-                ambientActive: props.ambientActive,
-              });
-              loopRef.current = setTimeout(renderLoop, 1000 / FPS);
-            };
-            loopRef.current = setTimeout(renderLoop, 0);
+            startRenderLoop(ctx);
           }
         }
       }
@@ -188,7 +170,7 @@ export default function SacredGeometry({
 
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [isActive]);
+  }, [isActive, startRenderLoop]);
 
   if (!isActive) return null;
 

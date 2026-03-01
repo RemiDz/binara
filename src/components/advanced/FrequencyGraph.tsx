@@ -2,18 +2,11 @@
 
 import type { AdvancedTimelinePhase } from '@/types';
 import { applyEasing } from '@/lib/easing';
+import { getBrainwaveColor } from '@/lib/brainwave-states';
 
 interface FrequencyGraphProps {
   phases: AdvancedTimelinePhase[];
   defaultBeatFreq: number;
-}
-
-function getBrainwaveColor(freq: number): string {
-  if (freq <= 4) return '#1a237e';
-  if (freq <= 8) return '#7986cb';
-  if (freq <= 12) return '#4fc3f7';
-  if (freq <= 30) return '#ffab40';
-  return '#e040fb';
 }
 
 export default function FrequencyGraph({ phases, defaultBeatFreq }: FrequencyGraphProps) {

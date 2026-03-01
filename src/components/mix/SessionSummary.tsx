@@ -7,21 +7,25 @@ import { AMBIENT_OPTIONS } from '@/lib/constants';
 interface SessionSummaryProps {
   stateId: string;
   carrierId: string;
+  customCarrierFreq?: number;
+  customBeatFreq?: number;
   ambientLayers: { id: string; volume: number }[];
   easeIn: number;
   deep: number;
   easeOut: number;
 }
 
-export default function SessionSummary({ stateId, carrierId, ambientLayers, easeIn, deep, easeOut }: SessionSummaryProps) {
+export default function SessionSummary({ stateId, carrierId, customCarrierFreq, customBeatFreq, ambientLayers, easeIn, deep, easeOut }: SessionSummaryProps) {
   const bwState = getBrainwaveState(stateId);
   const carrier = getCarrierTone(carrierId);
   const total = easeIn + deep + easeOut;
 
   if (!bwState || !carrier) return null;
 
-  const leftFreq = carrier.frequency;
-  const rightFreq = carrier.frequency + bwState.beatFreq;
+  const beatFreq = customBeatFreq ?? bwState.beatFreq;
+  const carrierFreq = customCarrierFreq ?? carrier.frequency;
+  const leftFreq = carrierFreq;
+  const rightFreq = carrierFreq + beatFreq;
 
   return (
     <div
@@ -37,10 +41,10 @@ export default function SessionSummary({ stateId, carrierId, ambientLayers, ease
       <div className="space-y-1 font-[family-name:var(--font-inter)] text-xs" style={{ color: 'var(--text-secondary)' }}>
         <p>
           <span style={{ color: bwState.color }}>{"● "}</span>
-          {bwState.label} {"·"} {bwState.band} {"·"} {bwState.beatFreq} Hz
+          {bwState.label} {"·"} {bwState.band} {"·"} {beatFreq} Hz
         </p>
         <p>
-          {"🎵 "}{carrier.label} {"·"} {carrier.frequency} Hz
+          {"🎵 "}{carrier.label} {"·"} {carrierFreq} Hz
         </p>
         {ambientLayers.length > 0 && (
           <p>
@@ -61,7 +65,7 @@ export default function SessionSummary({ stateId, carrierId, ambientLayers, ease
         <div className="flex gap-4 font-[family-name:var(--font-jetbrains)] text-[10px]" style={{ color: 'var(--text-muted)' }}>
           <span>L: {leftFreq} Hz</span>
           <span>R: {rightFreq.toFixed(1)} Hz</span>
-          <span>Beat: {bwState.beatFreq} Hz</span>
+          <span>Beat: {beatFreq} Hz</span>
         </div>
       </div>
     </div>

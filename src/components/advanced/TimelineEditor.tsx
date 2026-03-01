@@ -28,7 +28,7 @@ export default function TimelineEditor({ phases, isPro, onChange }: TimelineEdit
 
   const addPhase = () => {
     const newPhase: AdvancedTimelinePhase = {
-      id: `phase-${Date.now().toString(36)}`,
+      id: `phase-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
       name: `Phase ${phases.length + 1}`,
       duration: 10,
       beatFreq: 10,

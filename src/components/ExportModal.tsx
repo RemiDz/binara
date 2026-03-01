@@ -54,26 +54,28 @@ export default function ExportModal({
       volume,
     };
 
-    const blob = await exportSession(config, (p) => {
-      if (!cancelledRef.current) {
-        setProgress(p);
+    try {
+      const blob = await exportSession(config, (p) => {
+        if (!cancelledRef.current) {
+          setProgress(p);
+        }
+      });
+
+      if (cancelledRef.current) return;
+
+      if (blob) {
+        const filename = `${sessionName.replace(/[^a-zA-Z0-9]/g, '_')}_${effectiveDuration}min.wav`;
+        downloadBlob(blob, filename);
+        trackEvent('Export Complete', { mode: sessionType, duration: effectiveDuration, file_size_mb: fileSizeMB });
       }
-    });
 
-    if (cancelledRef.current) {
+      onClose();
+    } catch {
+      // OfflineAudioContext or rendering failed
+    } finally {
       setRendering(false);
-      return;
+      setProgress(0);
     }
-
-    if (blob) {
-      const filename = `${sessionName.replace(/[^a-zA-Z0-9]/g, '_')}_${effectiveDuration}min.wav`;
-      downloadBlob(blob, filename);
-      trackEvent('Export Complete', { mode: sessionType, duration: effectiveDuration, file_size_mb: fileSizeMB });
-    }
-
-    setRendering(false);
-    setProgress(0);
-    onClose();
   }, [durationSec, sessionType, advancedConfig, mixConfig, volume, sessionName, effectiveDuration, onClose]);
 
   const handleCancel = useCallback(() => {

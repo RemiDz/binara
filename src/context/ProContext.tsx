@@ -25,6 +25,9 @@ export function ProProvider({ children }: { children: ReactNode }) {
     checkProOnLoad().then((active) => {
       setPro(active);
       setIsLoading(false);
+    }).catch(() => {
+      setPro(false);
+      setIsLoading(false);
     });
   }, []);
 

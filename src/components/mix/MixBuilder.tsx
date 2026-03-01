@@ -91,7 +91,7 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
       ambientLayers,
       timeline: { easeIn, deep, easeOut },
     };
-    const result = saveSession(session);
+    const result = saveSession(session, isPro);
     if (result.success) {
       setSessions(loadSessions());
       setShowSaveModal(false);
@@ -207,6 +207,8 @@ export default function MixBuilder({ onStartSession, onPreviewTone, onLimitReach
       <SessionSummary
         stateId={stateId}
         carrierId={carrierId}
+        customCarrierFreq={carrierId === 'custom' ? customCarrierFreq : undefined}
+        customBeatFreq={stateId === 'custom' ? customBeatFreq : undefined}
         ambientLayers={ambientLayers}
         easeIn={easeIn}
         deep={deep}

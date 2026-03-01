@@ -3,8 +3,8 @@
 // Persists Pro state to localStorage with offline grace period
 
 // ━━━ TESTING MODE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Set to false to activate LemonSqueezy licence checks
-const TESTING_MODE = true;
+// Reads from env var NEXT_PUBLIC_PRO_TESTING_MODE. Defaults to false.
+const TESTING_MODE = process.env.NEXT_PUBLIC_PRO_TESTING_MODE === 'true';
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export interface ProState {
@@ -31,7 +31,11 @@ export function getProState(): ProState | null {
 }
 
 export function setProState(state: ProState): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Quota exceeded or private browsing — silently fail
+  }
 }
 
 export function isPro(): boolean {

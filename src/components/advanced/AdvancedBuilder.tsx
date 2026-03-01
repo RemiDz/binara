@@ -20,6 +20,7 @@ import type { AdvancedSessionConfig, BeatLayer, FilterConfig, LFOConfig, Isochro
 import { createDefaultAdvancedConfig, createDefaultBeatLayer } from '@/types';
 import { loadAdvancedSessions, saveAdvancedSession, deleteAdvancedSession } from '@/lib/session-storage';
 import { saveCreateFavourite } from '@/lib/favourites-storage';
+import { getBrainwaveColor, getBrainwaveLabel } from '@/lib/brainwave-states';
 import type { UseAudioEngineReturn } from '@/hooks/useAudioEngine';
 
 interface AdvancedBuilderProps {
@@ -29,22 +30,6 @@ interface AdvancedBuilderProps {
   onPreviewTone: (frequency: number) => Promise<void>;
   onLimitReached: (message: string) => void;
   audio: UseAudioEngineReturn;
-}
-
-function getBrainwaveColor(freq: number): string {
-  if (freq <= 4) return '#1a237e';
-  if (freq <= 8) return '#7986cb';
-  if (freq <= 12) return '#4fc3f7';
-  if (freq <= 30) return '#ffab40';
-  return '#e040fb';
-}
-
-function getBrainwaveLabel(freq: number): string {
-  if (freq <= 4) return 'Delta';
-  if (freq <= 8) return 'Theta';
-  if (freq <= 12) return 'Alpha';
-  if (freq <= 30) return 'Beta';
-  return 'Gamma';
 }
 
 export default function AdvancedBuilder({
@@ -99,7 +84,8 @@ export default function AdvancedBuilder({
   const handlePreviewMute = useCallback(() => {
     setPreview((prev) => {
       const newMuted = !prev.isMuted;
-      audio.setVolume(newMuted ? 0 : prev.volume);
+      // Schedule side effect outside setState via microtask
+      queueMicrotask(() => audio.setVolume(newMuted ? 0 : prev.volume));
       return { ...prev, isMuted: newMuted };
     });
   }, [audio]);
@@ -150,12 +136,12 @@ export default function AdvancedBuilder({
   const addLayer = useCallback(() => {
     setConfig((prev) => {
       if (prev.layers.length >= (isPro ? 4 : 1)) {
-        onLimitReached('Free plan supports 1 beat layer. Upgrade to Pro for up to 4 layers!');
+        queueMicrotask(() => onLimitReached('Free plan supports 1 beat layer. Upgrade to Pro for up to 4 layers!'));
         return prev;
       }
       const newLayer = createDefaultBeatLayer(prev.layers.length);
       if (previewActiveRef.current) {
-        audio.addBeatLayer(newLayer);
+        queueMicrotask(() => audio.addBeatLayer(newLayer));
       }
       return { ...prev, layers: [...prev.layers, newLayer] };
     });

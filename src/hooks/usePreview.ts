@@ -35,7 +35,7 @@ export function usePreview() {
       ctxRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     }
     if (ctxRef.current.state === 'suspended') {
-      ctxRef.current.resume();
+      void ctxRef.current.resume();
     }
     return ctxRef.current;
   }, []);
@@ -92,8 +92,8 @@ export function usePreview() {
 
     leftOsc.type = 'sine';
     rightOsc.type = 'sine';
-    leftOsc.frequency.setValueAtTime(BASE_CARRIER, now);
-    rightOsc.frequency.setValueAtTime(BASE_CARRIER + preset.beatFreq, now);
+    leftOsc.frequency.setValueAtTime(preset.carrierFreq, now);
+    rightOsc.frequency.setValueAtTime(preset.carrierFreq + preset.beatFreq, now);
 
     leftOsc.connect(leftGain);
     rightOsc.connect(rightGain);

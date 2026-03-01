@@ -42,9 +42,12 @@ export default function StateSelector({ selectedId, customBeatFreq, onChange, on
           const isLocked = isCustom && !isPro;
 
           return (
-            <button
+            <div
               key={s.id}
+              role="button"
+              tabIndex={0}
               onClick={() => !isLocked && onChange(s)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !isLocked) onChange(s); }}
               className="p-3 rounded-xl text-left transition-all active:scale-[0.98]"
               style={{
                 background: isActive ? `${s.color}12` : 'var(--glass-bg)',
@@ -126,7 +129,7 @@ export default function StateSelector({ selectedId, customBeatFreq, onChange, on
                   />
                 </div>
               )}
-            </button>
+            </div>
           );
         })}
       </div>

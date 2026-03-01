@@ -13,22 +13,7 @@ import FaceDownOverlay from '../FaceDownOverlay';
 import ExportModal from '../ExportModal';
 import ShareButton from '../ShareButton';
 import { useSensors } from '@/hooks/useSensors';
-
-function getBrainwaveColor(freq: number): string {
-  if (freq <= 4) return '#1a237e';
-  if (freq <= 8) return '#7986cb';
-  if (freq <= 12) return '#4fc3f7';
-  if (freq <= 30) return '#ffab40';
-  return '#e040fb';
-}
-
-function getBrainwaveLabel(freq: number): string {
-  if (freq <= 4) return 'Delta';
-  if (freq <= 8) return 'Theta';
-  if (freq <= 12) return 'Alpha';
-  if (freq <= 30) return 'Beta';
-  return 'Gamma';
-}
+import { getBrainwaveColor, getBrainwaveLabel } from '@/lib/brainwave-states';
 
 interface AdvancedPlayerProps {
   config: AdvancedSessionConfig;

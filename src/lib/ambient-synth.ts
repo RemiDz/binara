@@ -31,6 +31,7 @@ const SAMPLE_FILES: Record<string, string> = {
 
 // ─── Decoded buffer cache (shared across all SampleSynth instances) ───
 
+const MAX_BUFFER_CACHE = 15;
 const bufferCache = new Map<string, AudioBuffer>();
 
 async function loadAmbientBuffer(ctx: AudioContext, file: string): Promise<AudioBuffer> {
@@ -38,6 +39,11 @@ async function loadAmbientBuffer(ctx: AudioContext, file: string): Promise<Audio
   const response = await fetch(`/audio/ambient/${file}`);
   const arrayBuffer = await response.arrayBuffer();
   const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+  // Evict oldest entry if cache is full
+  if (bufferCache.size >= MAX_BUFFER_CACHE) {
+    const firstKey = bufferCache.keys().next().value;
+    if (firstKey) bufferCache.delete(firstKey);
+  }
   bufferCache.set(file, audioBuffer);
   return audioBuffer;
 }
@@ -113,7 +119,10 @@ class SampleSynth implements AmbientSynth {
     const v = Math.min(Math.max(volume, 0), 1);
     this._targetVolume = v;
     if (!this._gainNode || !this.ctx) return;
-    this._gainNode.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
+    const now = this.ctx.currentTime;
+    this._gainNode.gain.cancelScheduledValues(now);
+    this._gainNode.gain.setValueAtTime(this._gainNode.gain.value, now);
+    this._gainNode.gain.setTargetAtTime(v, now, 0.05);
   }
 
   stop(): void {
@@ -243,7 +252,8 @@ abstract class BaseSynth implements AmbientSynth {
     this.ctx = ctx;
     this._active = true;
     this._gainNode = ctx.createGain();
-    this._gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+    this._gainNode.gain.setValueAtTime(0, ctx.currentTime);
+    this._gainNode.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.05);
     this._gainNode.connect(destination);
   }
 

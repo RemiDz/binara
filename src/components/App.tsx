@@ -55,6 +55,7 @@ export default function App() {
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timelineRunnerRef = useRef<TimelineRunner | null>(null);
   const advancedTimelineRunnerRef = useRef<AdvancedTimelineRunner | null>(null);
+  const stopDispatchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // PRO upgrade modal (triggered by inline upgrade links)
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
@@ -91,6 +92,18 @@ export default function App() {
   const [listenBeatFreq, setListenBeatFreq] = useState(0);
   const [listenTotalProgress, setListenTotalProgress] = useState(0);
   const currentBeatFreqRef = useRef(0);
+
+  // Stable callback refs — avoids stale closures in setInterval/event listeners
+  const handleSessionCompleteRef = useRef<() => void>(() => {});
+  const handleSleepTimerCompleteRef = useRef<() => void>(() => {});
+  const handleMixSessionCompleteRef = useRef<() => void>(() => {});
+  const handleAdvancedSessionCompleteRef = useRef<() => void>(() => {});
+  const handleStopRef = useRef<() => void>(() => {});
+  const handleStopMixSessionRef = useRef<() => void>(() => {});
+  const handleStopAdvancedSessionRef = useRef<() => void>(() => {});
+  const activePresetRef = useRef(state.activePreset);
+  const hapticActiveRef = useRef(hapticActive);
+  const advancedConfigRef = useRef(state.advancedConfig);
 
   // Headphone warning overlay
   const headphoneWarning = useHeadphoneWarning();
@@ -215,7 +228,7 @@ export default function App() {
           const fadeStartSecs = Math.max(0, timerEndSecs - 180);
 
           if (elapsed >= timerEndSecs) {
-            handleSleepTimerComplete();
+            handleSleepTimerCompleteRef.current();
             return;
           }
 
@@ -235,12 +248,12 @@ export default function App() {
         // Normal session completion (no sleep timer)
         const durationSecs = state.sessionDuration * 60;
         if (elapsed >= durationSecs) {
-          handleSessionComplete();
+          handleSessionCompleteRef.current();
           return;
         }
 
         // Phase tracking — calculate current phase and update oscillator frequency
-        const preset = state.activePreset;
+        const preset = activePresetRef.current;
         if (preset) {
           const timerVal = sleepTimerRef.current;
           const effectiveSecs = timerVal !== null ? timerToSeconds(timerVal) : state.sessionDuration * 60;
@@ -260,7 +273,7 @@ export default function App() {
           audio.setFrequency(preset.carrierFreq, preset.carrierFreq + phaseInfo.currentBeatFreq);
 
           // Sync haptic engine with current beat freq and phase
-          if (hapticEngineRef.current && hapticActive) {
+          if (hapticEngineRef.current && hapticActiveRef.current) {
             hapticEngineRef.current.setBeatFreq(phaseInfo.currentBeatFreq);
             // Phase multiplier: ramp during ease-in/out, full during deep
             const phaseMult = phaseInfo.phase === 'easeIn'
@@ -273,7 +286,7 @@ export default function App() {
         }
 
         // Fade haptic during sleep timer fade
-        if (hapticEngineRef.current && hapticActive && sleepFadeStartedRef.current) {
+        if (hapticEngineRef.current && hapticActiveRef.current && sleepFadeStartedRef.current) {
           const timer = sleepTimerRef.current;
           if (timer !== null) {
             const timerEndSecs = timerToSeconds(timer);
@@ -315,7 +328,7 @@ export default function App() {
           dispatch({ type: 'SET_MIX_BEAT_FREQ', payload: result.currentBeatFreq });
 
           if (result.isComplete) {
-            handleMixSessionComplete();
+            handleMixSessionCompleteRef.current();
           }
         }
       }, 1000);
@@ -658,7 +671,8 @@ export default function App() {
     currentBeatFreqRef.current = 0;
     audio.stop();
     audio.stopAllAmbientLayers();
-    setTimeout(() => {
+    if (stopDispatchTimeoutRef.current) clearTimeout(stopDispatchTimeoutRef.current);
+    stopDispatchTimeoutRef.current = setTimeout(() => {
       dispatch({ type: 'STOP_SESSION' });
     }, 1600);
   }, [audio, dispatch, stopListenSensors, stopListenAutoMotion, stopHaptic, logListenSession]);
@@ -857,7 +871,8 @@ export default function App() {
     audio.stop();
     audio.stopAllAmbientLayers();
     timelineRunnerRef.current = null;
-    setTimeout(() => {
+    if (stopDispatchTimeoutRef.current) clearTimeout(stopDispatchTimeoutRef.current);
+    stopDispatchTimeoutRef.current = setTimeout(() => {
       dispatch({ type: 'STOP_MIX_SESSION' });
     }, 1600);
   }, [audio, dispatch, state.mixConfig, state.elapsedTime, state.sessionDuration]);
@@ -1012,7 +1027,8 @@ export default function App() {
     audio.stopAdvanced();
     audio.stopAllAmbientLayers();
     advancedTimelineRunnerRef.current = null;
-    setTimeout(() => {
+    if (stopDispatchTimeoutRef.current) clearTimeout(stopDispatchTimeoutRef.current);
+    stopDispatchTimeoutRef.current = setTimeout(() => {
       dispatch({ type: 'STOP_ADVANCED_SESSION' });
     }, 2000);
   }, [audio, dispatch, state.advancedConfig, state.elapsedTime, state.sessionDuration, state.ambientLayers]);
@@ -1038,6 +1054,18 @@ export default function App() {
   const handleAdvancedLimitReached = useCallback((message: string) => {
     dispatch({ type: 'SET_TOAST', payload: message });
   }, [dispatch]);
+
+  // Sync stable callback refs with latest handlers
+  handleSessionCompleteRef.current = handleSessionComplete;
+  handleSleepTimerCompleteRef.current = handleSleepTimerComplete;
+  handleMixSessionCompleteRef.current = handleMixSessionComplete;
+  handleAdvancedSessionCompleteRef.current = handleAdvancedSessionComplete;
+  handleStopRef.current = handleStop;
+  handleStopMixSessionRef.current = handleStopMixSession;
+  handleStopAdvancedSessionRef.current = handleStopAdvancedSession;
+  activePresetRef.current = state.activePreset;
+  hapticActiveRef.current = hapticActive;
+  advancedConfigRef.current = state.advancedConfig;
 
   // ─── Sensor → Audio callbacks (Mix/Advanced) ───
 
@@ -1083,9 +1111,10 @@ export default function App() {
           });
 
           // Update beat layer frequencies from timeline
-          if (state.advancedConfig) {
-            for (let i = 0; i < state.advancedConfig.layers.length; i++) {
-              const layer = state.advancedConfig.layers[i];
+          const advConfig = advancedConfigRef.current;
+          if (advConfig) {
+            for (let i = 0; i < advConfig.layers.length; i++) {
+              const layer = advConfig.layers[i];
               const newBeatFreq = result.currentBeatFreqs[i];
               if (newBeatFreq !== undefined) {
                 audio.setBeatLayerFrequency(layer.id, layer.carrierFreq, newBeatFreq);
@@ -1094,7 +1123,7 @@ export default function App() {
           }
 
           if (result.isComplete) {
-            handleAdvancedSessionComplete();
+            handleAdvancedSessionCompleteRef.current();
           }
         }
       }, 1000);
@@ -1130,7 +1159,7 @@ export default function App() {
       if (timer !== null && state.showPlayer) {
         const timerEndSecs = timer * 60;
         if (elapsed >= timerEndSecs) {
-          handleSleepTimerComplete();
+          handleSleepTimerCompleteRef.current();
           return;
         }
         // Catch up fade volume
@@ -1151,11 +1180,11 @@ export default function App() {
 
       if (elapsed >= durationSecs) {
         if (state.showAdvancedPlayer) {
-          handleAdvancedSessionComplete();
+          handleAdvancedSessionCompleteRef.current();
         } else if (state.showMixPlayer) {
-          handleMixSessionComplete();
+          handleMixSessionCompleteRef.current();
         } else if (state.showPlayer && timer === null) {
-          handleSessionComplete();
+          handleSessionCompleteRef.current();
         }
         return;
       }
@@ -1198,11 +1227,11 @@ export default function App() {
       },
       onStop: () => {
         if (state.showAdvancedPlayer) {
-          handleStopAdvancedSession();
+          handleStopAdvancedSessionRef.current();
         } else if (state.showMixPlayer) {
-          handleStopMixSession();
+          handleStopMixSessionRef.current();
         } else {
-          handleStop();
+          handleStopRef.current();
         }
       },
     }, artwork);

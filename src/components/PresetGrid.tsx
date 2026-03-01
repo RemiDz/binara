@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { useAppState, useAppDispatch } from '@/context/AppContext';
 import { useProContext } from '@/context/ProContext';
@@ -55,8 +55,10 @@ export default function PresetGrid({ miniPlayerVisible = false }: PresetGridProp
   }, [presets, isPro, dispatch]);
 
   const isPreviewing = previewingId !== null;
-  const favourites = loadFavourites();
-  const hasMixOrCreateFavs = favourites.some((f) => f.type === 'mix' || f.type === 'create');
+  const hasMixOrCreateFavs = useMemo(() => {
+    const favourites = loadFavourites();
+    return favourites.some((f) => f.type === 'mix' || f.type === 'create');
+  }, [selectedCategory]);
 
   // Calculate bottom padding: base 16px + bars that are visible
   const basePad = 16;

@@ -9,7 +9,7 @@ interface CarrierSelectorProps {
   customFreq: number;
   onChange: (tone: CarrierTone) => void;
   onCustomFreqChange: (freq: number) => void;
-  onPreview: (frequency: number) => void;
+  onPreview: (frequency: number) => void | Promise<void>;
 }
 
 export default function CarrierSelector({ selectedId, customFreq, onChange, onCustomFreqChange, onPreview }: CarrierSelectorProps) {
@@ -43,9 +43,12 @@ export default function CarrierSelector({ selectedId, customFreq, onChange, onCu
           const isLocked = isCustom && !isPro;
 
           return (
-            <button
+            <div
               key={t.id}
+              role="button"
+              tabIndex={0}
               onClick={() => !isLocked && handleTap(t)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !isLocked) handleTap(t); }}
               className="p-3 rounded-xl text-left transition-all active:scale-[0.98] relative"
               style={{
                 background: isActive ? 'rgba(79, 195, 247, 0.08)' : 'var(--glass-bg)',
@@ -123,7 +126,7 @@ export default function CarrierSelector({ selectedId, customFreq, onChange, onCu
                   />
                 </div>
               )}
-            </button>
+            </div>
           );
         })}
       </div>

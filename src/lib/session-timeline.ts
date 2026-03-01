@@ -87,7 +87,7 @@ export class TimelineRunner {
     for (const phase of phases) {
       if (elapsedSeconds < accumulated + phase.duration) {
         const phaseElapsed = elapsedSeconds - accumulated;
-        const phaseProgress = phaseElapsed / phase.duration;
+        const phaseProgress = phase.duration === 0 ? 1 : phaseElapsed / phase.duration;
 
         // Linear interpolation
         const currentBeatFreq =

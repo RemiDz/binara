@@ -25,6 +25,29 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
     console.error('ErrorBoundary caught:', error, errorInfo);
   }
 
+  componentDidMount() {
+    this._handleUnhandledRejection = (e: PromiseRejectionEvent) => {
+      console.error('Unhandled promise rejection:', e.reason);
+    };
+    this._handleError = (e: ErrorEvent) => {
+      console.error('Uncaught error:', e.error);
+    };
+    window.addEventListener('unhandledrejection', this._handleUnhandledRejection);
+    window.addEventListener('error', this._handleError);
+  }
+
+  componentWillUnmount() {
+    if (this._handleUnhandledRejection) {
+      window.removeEventListener('unhandledrejection', this._handleUnhandledRejection);
+    }
+    if (this._handleError) {
+      window.removeEventListener('error', this._handleError);
+    }
+  }
+
+  private _handleUnhandledRejection: ((e: PromiseRejectionEvent) => void) | null = null;
+  private _handleError: ((e: ErrorEvent) => void) | null = null;
+
   handleReload = () => {
     window.location.reload();
   };

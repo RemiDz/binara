@@ -22,3 +22,21 @@ export const BRAINWAVE_STATES: BrainwaveStateOption[] = [
 export function getBrainwaveState(id: string): BrainwaveStateOption | undefined {
   return BRAINWAVE_STATES.find((s) => s.id === id);
 }
+
+/** Get brainwave band color from beat frequency (Hz) */
+export function getBrainwaveColor(freq: number): string {
+  if (freq <= 4) return '#1a237e';
+  if (freq <= 8) return '#7986cb';
+  if (freq <= 12) return '#4fc3f7';
+  if (freq <= 30) return '#ffab40';
+  return '#e040fb';
+}
+
+/** Get brainwave band label from beat frequency (Hz) */
+export function getBrainwaveLabel(freq: number): string {
+  if (freq <= 4) return 'Delta';
+  if (freq <= 8) return 'Theta';
+  if (freq <= 12) return 'Alpha';
+  if (freq <= 30) return 'Beta';
+  return 'Gamma';
+}

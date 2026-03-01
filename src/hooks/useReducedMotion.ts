@@ -16,15 +16,16 @@ export function useReducedMotion(): boolean {
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  // Check app settings periodically (settings can change without re-mount)
+  // Sync app settings on storage changes and window focus
   useEffect(() => {
-    setSettingsReduced(getSettings().reducedMotion);
-
-    const interval = setInterval(() => {
-      setSettingsReduced(getSettings().reducedMotion);
-    }, 2000);
-
-    return () => clearInterval(interval);
+    const sync = () => setSettingsReduced(getSettings().reducedMotion);
+    sync();
+    window.addEventListener('storage', sync);
+    window.addEventListener('focus', sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener('focus', sync);
+    };
   }, []);
 
   return prefersReduced || settingsReduced;

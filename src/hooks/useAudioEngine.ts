@@ -80,6 +80,14 @@ export function useAudioEngine(): UseAudioEngineReturn {
   const [isInitialized, setIsInitialized] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearStopTimeout = useCallback(() => {
+    if (stopTimeoutRef.current) {
+      clearTimeout(stopTimeoutRef.current);
+      stopTimeoutRef.current = null;
+    }
+  }, []);
 
   const getEngine = useCallback(() => {
     if (!engineRef.current) {
@@ -114,6 +122,7 @@ export function useAudioEngine(): UseAudioEngineReturn {
   // ─── Listen mode ───
 
   const play = useCallback(async (config: AudioEngineConfig) => {
+    clearStopTimeout();
     const engine = getEngine();
     if (!engine.isInitialized) await engine.init();
     await engine.play(config);
@@ -126,22 +135,24 @@ export function useAudioEngine(): UseAudioEngineReturn {
   const stop = useCallback(() => {
     engineRef.current?.stop();
     stopPolling();
-    setTimeout(() => {
+    clearStopTimeout();
+    stopTimeoutRef.current = setTimeout(() => {
       setIsPlaying(false);
       setIsPaused(false);
       setCurrentTime(0);
     }, 1600);
-  }, [stopPolling]);
+  }, [stopPolling, clearStopTimeout]);
 
   const stopWithLongFade = useCallback(() => {
     engineRef.current?.stopWithLongFade();
     stopPolling();
-    setTimeout(() => {
+    clearStopTimeout();
+    stopTimeoutRef.current = setTimeout(() => {
       setIsPlaying(false);
       setIsPaused(false);
       setCurrentTime(0);
     }, 3200);
-  }, [stopPolling]);
+  }, [stopPolling, clearStopTimeout]);
 
   const pause = useCallback(async () => {
     await engineRef.current?.pause();
@@ -229,6 +240,7 @@ export function useAudioEngine(): UseAudioEngineReturn {
   // ─── Advanced mode ───
 
   const playAdvanced = useCallback(async (layers: BeatLayer[]) => {
+    clearStopTimeout();
     const engine = getEngine();
     if (!engine.isInitialized) await engine.init();
     await engine.playAdvanced(layers);
@@ -241,16 +253,18 @@ export function useAudioEngine(): UseAudioEngineReturn {
   const stopAdvanced = useCallback(() => {
     engineRef.current?.stopAdvanced();
     stopPolling();
-    setTimeout(() => {
+    clearStopTimeout();
+    stopTimeoutRef.current = setTimeout(() => {
       setIsPlaying(false);
       setIsPaused(false);
       setCurrentTime(0);
     }, 2000);
-  }, [stopPolling]);
+  }, [stopPolling, clearStopTimeout]);
 
   // ─── Preview mode (Create builder) ───
 
   const startPreview = useCallback(async (config: AdvancedSessionConfig) => {
+    clearStopTimeout();
     const engine = getEngine();
     if (!engine.isInitialized) await engine.init();
     await engine.startPreview(config);
@@ -323,10 +337,11 @@ export function useAudioEngine(): UseAudioEngineReturn {
   useEffect(() => {
     return () => {
       stopPolling();
+      clearStopTimeout();
       engineRef.current?.destroy();
       engineRef.current = null;
     };
-  }, [stopPolling]);
+  }, [stopPolling, clearStopTimeout]);
 
   return {
     isPlaying, isPaused, isInitialized, currentTime,

@@ -23,7 +23,7 @@ export function loadFavourites(): FavouriteItem[] {
 }
 
 function saveFavourites(items: FavouriteItem[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch { /* QuotaExceededError */ }
 }
 
 export function isFavourite(id: string): boolean {

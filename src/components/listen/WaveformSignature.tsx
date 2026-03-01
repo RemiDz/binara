@@ -17,6 +17,7 @@ export default function WaveformSignature({ wave, freq, isHovered, width = 140, 
   const animRef = useRef<number>(0);
   const phaseRef = useRef(0);
   const hoveredRef = useRef(isHovered);
+  const visibleRef = useRef(true);
 
   hoveredRef.current = isHovered;
 
@@ -34,6 +35,8 @@ export default function WaveformSignature({ wave, freq, isHovered, width = 140, 
     ctx.scale(dpr, dpr);
 
     const draw = () => {
+      if (!visibleRef.current) return;
+
       ctx.clearRect(0, 0, width, height);
       phaseRef.current += hoveredRef.current ? 0.06 : 0.015;
 
@@ -69,8 +72,25 @@ export default function WaveformSignature({ wave, freq, isHovered, width = 140, 
       animRef.current = requestAnimationFrame(draw);
     };
 
+    // Use IntersectionObserver to pause animation when off-screen
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        visibleRef.current = entry.isIntersecting;
+        if (entry.isIntersecting) {
+          animRef.current = requestAnimationFrame(draw);
+        } else {
+          cancelAnimationFrame(animRef.current);
+        }
+      },
+      { threshold: 0 },
+    );
+    observer.observe(canvas);
+
     draw();
-    return () => cancelAnimationFrame(animRef.current);
+    return () => {
+      cancelAnimationFrame(animRef.current);
+      observer.disconnect();
+    };
   }, [wave, freq, width, height, waveState]);
 
   return (

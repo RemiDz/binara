@@ -19,8 +19,10 @@ export interface ExportConfig {
 export async function exportSession(
   config: ExportConfig,
   onProgress: (progress: number) => void,
-): Promise<Blob | null> {
-  const { sampleRate, duration } = config;
+): Promise<Blob> {
+  const { sampleRate } = config;
+  const MAX_EXPORT_SECONDS = 1800; // 30 min cap to prevent OOM
+  const duration = Math.min(config.duration, MAX_EXPORT_SECONDS);
   const totalSamples = sampleRate * duration;
   const channelCount = 2;
 
@@ -32,7 +34,7 @@ export async function exportSession(
   } else if (config.type === 'mix' && config.mixConfig) {
     buildMixGraph(offlineCtx, config.mixConfig, config.volume, duration);
   } else {
-    return null;
+    throw new Error('Invalid export config: missing advancedConfig or mixConfig');
   }
 
   // Progress timer (estimated)
@@ -53,9 +55,9 @@ export async function exportSession(
     const wavBlob = encodeWAV(audioBuffer);
     onProgress(1);
     return wavBlob;
-  } catch {
+  } catch (e) {
     clearInterval(progressInterval);
-    return null;
+    throw new Error(`Export rendering failed: ${e instanceof Error ? e.message : 'unknown error'}`);
   }
 }
 
@@ -105,12 +107,14 @@ function buildAdvancedGraph(
   const fadeIn = 2;
   const fadeOut = 2;
 
+  const layerOscillators: OscillatorNode[] = [];
   for (const layer of config.layers) {
-    createOfflineBeatLayer(ctx, layer, beatSumGain, duration, fadeIn, fadeOut);
+    const { oscR } = createOfflineBeatLayer(ctx, layer, beatSumGain, duration, fadeIn, fadeOut);
+    layerOscillators.push(oscR);
   }
 
   // Schedule timeline frequency changes
-  scheduleAdvancedTimeline(ctx, config, duration);
+  scheduleAdvancedTimeline(config, layerOscillators);
 }
 
 function createOfflineBeatLayer(
@@ -120,9 +124,11 @@ function createOfflineBeatLayer(
   duration: number,
   fadeIn: number,
   fadeOut: number,
-): void {
+): { oscR: OscillatorNode } {
   const now = 0;
   const vol = layer.volume / 100;
+  const safeFadeIn = Math.min(fadeIn, duration / 2);
+  const safeFadeOut = Math.min(fadeOut, duration / 2);
 
   const oscL = ctx.createOscillator();
   oscL.type = layer.waveform;
@@ -130,8 +136,8 @@ function createOfflineBeatLayer(
 
   const gainL = ctx.createGain();
   gainL.gain.setValueAtTime(0, now);
-  gainL.gain.linearRampToValueAtTime(0.5, now + fadeIn);
-  gainL.gain.setValueAtTime(0.5, now + duration - fadeOut);
+  gainL.gain.linearRampToValueAtTime(0.5, now + safeFadeIn);
+  gainL.gain.setValueAtTime(0.5, now + duration - safeFadeOut);
   gainL.gain.linearRampToValueAtTime(0, now + duration);
 
   const panL = ctx.createStereoPanner();
@@ -143,8 +149,8 @@ function createOfflineBeatLayer(
 
   const gainR = ctx.createGain();
   gainR.gain.setValueAtTime(0, now);
-  gainR.gain.linearRampToValueAtTime(0.5, now + fadeIn);
-  gainR.gain.setValueAtTime(0.5, now + duration - fadeOut);
+  gainR.gain.linearRampToValueAtTime(0.5, now + safeFadeIn);
+  gainR.gain.setValueAtTime(0.5, now + duration - safeFadeOut);
   gainR.gain.linearRampToValueAtTime(0, now + duration);
 
   const panR = ctx.createStereoPanner();
@@ -167,34 +173,34 @@ function createOfflineBeatLayer(
   oscR.start(now);
   oscL.stop(now + duration);
   oscR.stop(now + duration);
+
+  return { oscR };
 }
 
 function scheduleAdvancedTimeline(
-  ctx: OfflineAudioContext,
   config: AdvancedSessionConfig,
-  _duration: number,
+  layerOscillators: OscillatorNode[],
 ): void {
-  // Pre-calculate phase boundaries and schedule frequency ramps
   if (config.timeline.length <= 1) return;
 
-  // This is a simplified version — for offline rendering, we schedule
-  // all frequency changes upfront using linearRampToValueAtTime
-  // Note: The actual live timeline uses tick-based interpolation,
-  // but for export we can pre-schedule everything
+  const defaultBeatFreqs = config.layers.map((l) => l.beatFreq);
 
   let timeOffset = 0;
   for (let i = 0; i < config.timeline.length; i++) {
     const phase = config.timeline[i];
-    const phaseDuration = phase.duration * 60; // minutes to seconds
-    const nextPhase = config.timeline[i + 1];
+    const phaseDuration = phase.duration * 60;
 
-    if (nextPhase) {
-      // Schedule ramp to next phase's beat frequency
-      // For simplicity, we ramp the first layer. Real implementation
-      // would need per-layer phase targets.
-      // Since timeline phases each have their own beatFreq, we ramp
-      // from current phase's beatFreq to next phase's over the transition
-      void phaseDuration;
+    const prevPhase = config.timeline[i - 1];
+    const startBeatFreqs = prevPhase
+      ? config.layers.map(() => prevPhase.beatFreq)
+      : defaultBeatFreqs;
+
+    for (let j = 0; j < config.layers.length; j++) {
+      const osc = layerOscillators[j];
+      if (!osc) continue;
+      const carrier = config.layers[j].carrierFreq;
+      osc.frequency.setValueAtTime(carrier + startBeatFreqs[j], timeOffset);
+      osc.frequency.linearRampToValueAtTime(carrier + phase.beatFreq, timeOffset + phaseDuration);
     }
 
     timeOffset += phaseDuration;
@@ -212,7 +218,8 @@ function buildMixGraph(
 
   const bwState = getBrainwaveState(config.stateId);
   const carrier = getCarrierTone(config.carrierId);
-  if (!bwState || !carrier) return;
+  const carrierFreq = config.customCarrierFreq ?? carrier?.frequency ?? 200;
+  const targetBeat = config.customBeatFreq ?? bwState?.beatFreq ?? 10;
 
   // Compressor
   const compressor = ctx.createDynamicsCompressor();
@@ -231,16 +238,18 @@ function buildMixGraph(
 
   const fadeIn = 3;
   const fadeOut = 3;
+  const safeFadeIn = Math.min(fadeIn, duration / 2);
+  const safeFadeOut = Math.min(fadeOut, duration / 2);
 
   // Left carrier
   const oscL = ctx.createOscillator();
   oscL.type = 'sine';
-  oscL.frequency.setValueAtTime(carrier.frequency, now);
+  oscL.frequency.setValueAtTime(carrierFreq, now);
 
   const gainL = ctx.createGain();
   gainL.gain.setValueAtTime(0, now);
-  gainL.gain.linearRampToValueAtTime(0.5, now + fadeIn);
-  gainL.gain.setValueAtTime(0.5, now + duration - fadeOut);
+  gainL.gain.linearRampToValueAtTime(0.5, now + safeFadeIn);
+  gainL.gain.setValueAtTime(0.5, now + duration - safeFadeOut);
   gainL.gain.linearRampToValueAtTime(0, now + duration);
 
   const panL = ctx.createStereoPanner();
@@ -252,8 +261,8 @@ function buildMixGraph(
 
   const gainR = ctx.createGain();
   gainR.gain.setValueAtTime(0, now);
-  gainR.gain.linearRampToValueAtTime(0.5, now + fadeIn);
-  gainR.gain.setValueAtTime(0.5, now + duration - fadeOut);
+  gainR.gain.linearRampToValueAtTime(0.5, now + safeFadeIn);
+  gainR.gain.setValueAtTime(0.5, now + duration - safeFadeOut);
   gainR.gain.linearRampToValueAtTime(0, now + duration);
 
   const panR = ctx.createStereoPanner();
@@ -265,18 +274,17 @@ function buildMixGraph(
   const easeOutSec = config.timeline.easeOut * 60;
 
   const startBeat = 10; // Alpha 10 Hz start
-  const targetBeat = bwState.beatFreq;
 
   // Ease in: ramp from alpha (10Hz) to target
-  oscR.frequency.setValueAtTime(carrier.frequency + startBeat, now);
-  oscR.frequency.linearRampToValueAtTime(carrier.frequency + targetBeat, now + easeInSec);
+  oscR.frequency.setValueAtTime(carrierFreq + startBeat, now);
+  oscR.frequency.linearRampToValueAtTime(carrierFreq + targetBeat, now + easeInSec);
 
   // Deep: hold target
-  oscR.frequency.setValueAtTime(carrier.frequency + targetBeat, now + easeInSec);
+  oscR.frequency.setValueAtTime(carrierFreq + targetBeat, now + easeInSec);
 
   // Ease out: ramp back to alpha
-  oscR.frequency.setValueAtTime(carrier.frequency + targetBeat, now + easeInSec + deepSec);
-  oscR.frequency.linearRampToValueAtTime(carrier.frequency + startBeat, now + easeInSec + deepSec + easeOutSec);
+  oscR.frequency.setValueAtTime(carrierFreq + targetBeat, now + easeInSec + deepSec);
+  oscR.frequency.linearRampToValueAtTime(carrierFreq + startBeat, now + easeInSec + deepSec + easeOutSec);
 
   oscL.connect(gainL);
   gainL.connect(panL);

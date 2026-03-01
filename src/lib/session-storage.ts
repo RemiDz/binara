@@ -21,7 +21,9 @@ export function loadSessions(): SavedSession[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((s: unknown) => s && typeof s === 'object' && 'id' in (s as Record<string, unknown>));
   } catch {
     return [];
   }
@@ -33,13 +35,17 @@ export function saveSession(session: SavedSession, isPro = false): { success: bo
     return { success: false, error: `Free plan supports ${MAX_FREE_SESSIONS} saved sessions. Delete one to save a new one, or upgrade to Pro for unlimited saves.` };
   }
   sessions.push(session);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+  } catch {
+    return { success: false, error: 'Storage full. Please delete a session to free space.' };
+  }
   return { success: true };
 }
 
 export function deleteSession(id: string): void {
   const sessions = loadSessions().filter((s) => s.id !== id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions)); } catch { /* */ }
 }
 
 export function getSessionCount(): number {
@@ -65,7 +71,9 @@ export function loadAdvancedSessions(): SavedAdvancedSession[] {
   try {
     const raw = localStorage.getItem(ADVANCED_STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((s: unknown) => s && typeof s === 'object' && 'id' in (s as Record<string, unknown>));
   } catch {
     return [];
   }
@@ -77,13 +85,17 @@ export function saveAdvancedSession(session: SavedAdvancedSession, isPro = false
     return { success: false, error: `Free plan supports ${MAX_FREE_ADVANCED_SESSIONS} saved advanced sessions. Delete one to save a new one, or upgrade to Pro for unlimited saves.` };
   }
   sessions.push(session);
-  localStorage.setItem(ADVANCED_STORAGE_KEY, JSON.stringify(sessions));
+  try {
+    localStorage.setItem(ADVANCED_STORAGE_KEY, JSON.stringify(sessions));
+  } catch {
+    return { success: false, error: 'Storage full. Please delete a session to free space.' };
+  }
   return { success: true };
 }
 
 export function deleteAdvancedSession(id: string): void {
   const sessions = loadAdvancedSessions().filter((s) => s.id !== id);
-  localStorage.setItem(ADVANCED_STORAGE_KEY, JSON.stringify(sessions));
+  try { localStorage.setItem(ADVANCED_STORAGE_KEY, JSON.stringify(sessions)); } catch { /* */ }
 }
 
 export { MAX_FREE_ADVANCED_SESSIONS };
