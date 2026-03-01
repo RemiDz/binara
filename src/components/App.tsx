@@ -764,7 +764,7 @@ export default function App() {
 
   const handleInitAudio = useCallback(async () => {
     await audio.init();
-  }, [audio]);
+  }, [audio.init]);
 
   // ─── Mix mode handlers ───
 
@@ -901,7 +901,7 @@ export default function App() {
 
   const handlePreviewTone = useCallback(async (frequency: number) => {
     await audio.previewTone(frequency);
-  }, [audio]);
+  }, [audio.previewTone]);
 
   // ─── Advanced mode handlers ───
 
@@ -910,12 +910,12 @@ export default function App() {
   const handleStartPreview = useCallback(async (config: AdvancedSessionConfig) => {
     await audio.startPreview(config);
     previewActiveRef.current = true;
-  }, [audio]);
+  }, [audio.startPreview]);
 
   const handleStopPreview = useCallback(() => {
     previewActiveRef.current = false;
     audio.stopPreview();
-  }, [audio]);
+  }, [audio.stopPreview]);
 
   const doStartAdvancedSession = useCallback(async (config: AdvancedSessionConfig) => {
     trackEvent('Session Start', { mode: 'advanced' });
@@ -1088,7 +1088,7 @@ export default function App() {
 
   const handleAdvancedSensorStereoWidthChange = useCallback((width: number) => {
     audio.setStereoWidth(width);
-  }, [audio]);
+  }, [audio.setStereoWidth]);
 
   // Advanced mode timer
   useEffect(() => {
