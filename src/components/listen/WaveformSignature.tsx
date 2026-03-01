@@ -96,6 +96,7 @@ export default function WaveformSignature({ wave, freq, isHovered, width = 140, 
   return (
     <canvas
       ref={canvasRef}
+      aria-hidden="true"
       style={{
         width,
         height,

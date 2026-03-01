@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { motion } from 'motion/react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface SaveSessionModalProps {
   defaultName: string;
@@ -11,6 +12,8 @@ interface SaveSessionModalProps {
 
 export default function SaveSessionModal({ defaultName, onSave, onCancel }: SaveSessionModalProps) {
   const [name, setName] = useState(defaultName);
+  const stableCancel = useCallback(() => onCancel(), [onCancel]);
+  const trapRef = useFocusTrap(true, stableCancel);
 
   return (
     <motion.div
@@ -21,6 +24,10 @@ export default function SaveSessionModal({ defaultName, onSave, onCancel }: Save
       style={{ background: 'rgba(5, 8, 16, 0.8)' }}
     >
       <motion.div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="save-session-title"
         initial={{ scale: 0.95, y: 10 }}
         animate={{ scale: 1, y: 0 }}
         className="w-full max-w-sm p-4 rounded-xl space-y-4"
@@ -31,6 +38,7 @@ export default function SaveSessionModal({ defaultName, onSave, onCancel }: Save
         }}
       >
         <h3
+          id="save-session-title"
           className="font-[family-name:var(--font-inter)] font-medium text-sm"
           style={{ color: 'var(--text-primary)' }}
         >

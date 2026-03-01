@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 const LS_DISMISSED = 'binara_hp_warning_dismissed';
 const LS_PERMANENT = 'binara_hp_warning_permanent';
@@ -56,6 +57,8 @@ export default function HeadphoneWarning({ isOpen, onDismiss }: HeadphoneWarning
     onDismiss(dontShowAgain);
   }, [onDismiss, dontShowAgain]);
 
+  const trapRef = useFocusTrap(isOpen, handleDismiss);
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -72,6 +75,10 @@ export default function HeadphoneWarning({ isOpen, onDismiss }: HeadphoneWarning
 
           {/* Bottom sheet */}
           <motion.div
+            ref={trapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="hp-warning-title"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -104,6 +111,7 @@ export default function HeadphoneWarning({ isOpen, onDismiss }: HeadphoneWarning
             </div>
 
             <h3
+              id="hp-warning-title"
               className="font-[family-name:var(--font-playfair)] text-lg mb-2"
               style={{ color: 'var(--text-primary)' }}
             >

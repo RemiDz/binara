@@ -79,6 +79,7 @@ export function useAudioEngine(): UseAudioEngineReturn {
   const [isPaused, setIsPaused] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -271,15 +272,15 @@ export function useAudioEngine(): UseAudioEngineReturn {
     setIsPlaying(true);
     setIsPaused(false);
     setIsInitialized(true);
+    setIsPreviewMode(true);
   }, [getEngine]);
 
   const stopPreview = useCallback(() => {
     engineRef.current?.stopPreview();
     setIsPlaying(false);
     setIsPaused(false);
+    setIsPreviewMode(false);
   }, []);
-
-  const isPreviewMode = engineRef.current?.isPreviewMode ?? false;
 
   // ─── Beat layer controls ───
 

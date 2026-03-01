@@ -29,6 +29,8 @@ export default function CategoryFilter() {
     <div className="px-4 py-3">
       <div className="max-w-5xl mx-auto">
         <div
+          role="tablist"
+          aria-label="Preset category"
           className="flex gap-1 overflow-x-auto no-scrollbar"
           style={{
             padding: 4,
@@ -43,6 +45,8 @@ export default function CategoryFilter() {
             return (
               <button
                 key={cat.id}
+                role="tab"
+                aria-selected={isActive}
                 onClick={() => handleSelect(cat.id)}
                 className="flex-shrink-0 font-[family-name:var(--font-inter)] whitespace-nowrap"
                 style={{

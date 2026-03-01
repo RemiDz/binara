@@ -22,8 +22,9 @@ export default function DurationSelector({ value, onChange }: DurationSelectorPr
           return (
             <button
               key={d}
+              aria-pressed={isActive}
               onClick={() => onChange(d)}
-              className="px-3 py-1.5 rounded-full text-xs font-[family-name:var(--font-jetbrains)] font-medium transition-all"
+              className="px-3 py-1.5 rounded-full text-xs font-[family-name:var(--font-jetbrains)] font-medium transition-all min-h-[44px] min-w-[44px]"
               style={{
                 background: isActive ? 'rgba(79, 195, 247, 0.15)' : 'var(--glass-bg)',
                 border: `1px solid ${isActive ? 'rgba(79, 195, 247, 0.3)' : 'var(--glass-border)'}`,

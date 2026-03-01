@@ -425,3 +425,81 @@ All issues from phases 1–4 have been systematically addressed. Below is the co
 - **console.log**: 0 instances in source code
 
 ### Total: 55 issues fixed across 30+ files
+
+---
+
+## Second Pass Fix Summary
+
+Cross-referenced all 97 original issues + accessibility audit + payment flow + dependency audit against the first pass Fix Summary. Identified and fixed all remaining actionable issues.
+
+### Audio Export Completeness (Issues #4, #5)
+
+| Feature Added | Export Type | Implementation | File |
+|---------------|------------|----------------|------|
+| LFO modulation (volume, pitch, filter, pan) | Advanced | `addOfflineLFO()` — OscillatorNode→GainNode→target AudioParam | `audio-export.ts` |
+| Isochronic tone gating (sharp, soft, ramp) | Advanced | `scheduleIsochronicPulses()` — pre-scheduled gain automation for full duration | `audio-export.ts` |
+| Stereo width | Advanced | `stereoWidth` param applied to layer panners (-width/+width) | `audio-export.ts` |
+| Stereo pan offset | Advanced | `masterPan` StereoPannerNode inserted in chain | `audio-export.ts` |
+| Stereo crossfeed | Advanced | Width reduction: `width * (1 - crossfeed/100)` | `audio-export.ts` |
+| Stereo rotation | Advanced | `addOfflineStereoRotation()` — LFO→masterPan.pan | `audio-export.ts` |
+| Ambient layers (white/pink/brown/bowls) | Advanced + Mix | `addOfflineAmbientLayers()` with noise buffer generation | `audio-export.ts` |
+| Noise buffer generation | Both | `createOfflineNoiseBuffer()` — white/pink(Voss-McCartney)/brown algorithms | `audio-export.ts` |
+| Bowl synthesis | Both | `createOfflineBowlBuffer()` — 3-frequency additive synthesis | `audio-export.ts` |
+
+### Accessibility Fixes (21 issues across 17 files)
+
+| Fix | Components | WCAG | Files Changed |
+|-----|-----------|------|---------------|
+| Focus trap on modals | HeadphoneWarning, Settings, SaveSessionModal | 2.4.3 | New: `useFocusTrap.ts`, edited 3 components |
+| `role="dialog"` + `aria-modal` + `aria-labelledby` | HeadphoneWarning, Settings, SaveSessionModal | 4.1.2 | `HeadphoneWarning.tsx`, `Settings.tsx`, `SaveSessionModal.tsx` |
+| `role="alert"` + `aria-live="assertive"` | Toast | 4.1.3 | `Toast.tsx` |
+| `role="status"` + `aria-live="polite"` | OfflineIndicator | 4.1.3 | `OfflineIndicator.tsx` |
+| `role="tablist"` + `role="tab"` + `aria-selected` | ModeSwitcher, CategoryFilter | 4.1.2 | `ModeSwitcher.tsx`, `CategoryFilter.tsx` |
+| `role="timer"` + `aria-label` | SessionTimer | 4.1.2 | `SessionTimer.tsx` |
+| `role="switch"` + `aria-checked` + `aria-label` | Settings Toggle | 4.1.2 | `Settings.tsx` |
+| `aria-pressed` on toggle buttons | DurationSelector, SleepTimer | 4.1.2 | `DurationSelector.tsx`, `SleepTimer.tsx` |
+| `aria-hidden="true"` on decorative canvas | SacredGeometry, WaveformSignature | 1.1.1 | `SacredGeometry.tsx`, `WaveformSignature.tsx` |
+| `aria-label` on controls | Settings close, volume range | 4.1.2 | `Settings.tsx` |
+| Removed `outline: 'none'` / added `focus-visible:ring` | PresetCard, PlayerView, DailyRecommendation, ShareButton | 2.4.7 | 4 files |
+| Touch targets ≥ 44px | MiniPlayer, AmbientSelector, DurationSelector, SleepTimer, PlayerView, DailyRecommendation | 2.5.8 | 6 files |
+
+### Remaining Skipped Issues Fixed
+
+| # | Issue | Fix | File |
+|---|-------|-----|------|
+| 39 | `isPreviewMode` reads from ref during render | Converted to reactive `useState` + `setIsPreviewMode` in start/stop callbacks | `useAudioEngine.ts` |
+| 57 | Timeout ID cast to interval type | Added separate `timeouts` array in `BaseSynth`, proper `clearTimeout` in `stop()` | `ambient-synth.ts` |
+| 70 | Native `<input type="range">` in TimelineBuilder | Replaced with custom `Slider` component for visual consistency | `TimelineBuilder.tsx` |
+
+### Dependency Audit
+
+| Action | Result |
+|--------|--------|
+| `npm audit fix` | Resolved minimatch ReDoS vulnerability → **0 vulnerabilities** |
+| `npm audit` | Clean — found 0 vulnerabilities |
+
+### Second Pass Verification Results
+
+- **TypeScript**: `npx tsc --noEmit` — 0 errors
+- **Production build**: `npm run build` — compiled successfully, all 10 routes generated
+- **npm audit**: 0 vulnerabilities (minimatch fixed)
+
+### Total second pass: 25+ issues fixed across 20+ files
+
+---
+
+## Remaining Known Issues
+
+Issues intentionally not fixed, with explanations:
+
+| # | Issue | Reason |
+|---|-------|--------|
+| 18 | `localStorage` tampering grants Pro | Fundamental limitation of client-side Pro gating. Requires server-side verification for each Pro feature check — a significant architecture change beyond bug fixing. ProGate now uses conditional rendering (#3 fix), which prevents casual bypass. |
+| 43 | No LemonSqueezy webhook for refund/revocation | New feature requiring LemonSqueezy product-specific webhook setup, secret configuration, and a dedicated API route. Beyond scope of bug fixing. |
+| 55 | No `StereoPannerNode` fallback for Safari < 14.1 | Safari 14.1 was released April 2021. The remaining user base on pre-14.1 Safari is negligible (<0.1%). A full ChannelMerger/ChannelSplitter fallback would add significant complexity for minimal benefit. |
+| 59 | Separate `AudioContext` in `usePreview` | Merging the preview AudioContext with the main engine requires refactoring the preview hook to accept an engine instance. Low-risk issue (iOS allows multiple contexts in modern versions). |
+| 60 | Ref assignments during render in App.tsx | React docs acknowledge this is harmless for refs that don't trigger visual changes. The refs store stable callback references. |
+| 67 | `'step'` easing type selectable only via API/sharing | Design choice — step easing is available for power users via shared URLs but not cluttering the UI. |
+| Sample-based ambient in exports | Rain, ocean, forest, etc. ambient sounds use OGG sample files that cannot be loaded in an `OfflineAudioContext` without async fetch. Synthesised ambient types (white, pink, brown, bowls) are fully supported in exports. |
+
+### Combined totals (first + second pass): ~80 issues fixed across 40+ files

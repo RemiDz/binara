@@ -23,7 +23,7 @@ export default function SessionTimer({ elapsedTime, sessionDuration, color }: Se
   const offset = circumference - progress * circumference;
 
   return (
-    <div className="flex items-center justify-center">
+    <div className="flex items-center justify-center" role="timer" aria-label={`${formatTime(elapsedTime)} of ${formatTime(totalSeconds)}`}>
       <div className="relative" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="-rotate-90">
           {/* Background ring */}

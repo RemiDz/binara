@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useSettings } from '@/hooks/useSettings';
 import { useProContext } from '@/context/ProContext';
 import { getProState } from '@/lib/pro';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface SettingsProps {
   isOpen: boolean;
@@ -16,6 +17,8 @@ export default function Settings({ isOpen, onClose }: SettingsProps) {
   const { isPro, deactivate } = useProContext();
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
+  const stableOnClose = useCallback(() => onClose(), [onClose]);
+  const trapRef = useFocusTrap(isOpen, stableOnClose);
 
   const proState = getProState();
   const maskedKey = proState?.licenceKey
@@ -63,6 +66,10 @@ export default function Settings({ isOpen, onClose }: SettingsProps) {
 
           {/* Bottom sheet */}
           <motion.div
+            ref={trapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-title"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -79,6 +86,7 @@ export default function Settings({ isOpen, onClose }: SettingsProps) {
             {/* Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between px-6 pt-5 pb-3" style={{ background: 'rgba(10, 22, 40, 0.98)' }}>
               <h2
+                id="settings-title"
                 className="font-[family-name:var(--font-playfair)] text-lg"
                 style={{ color: 'var(--text-primary)' }}
               >
@@ -86,6 +94,7 @@ export default function Settings({ isOpen, onClose }: SettingsProps) {
               </h2>
               <button
                 onClick={onClose}
+                aria-label="Close settings"
                 className="w-8 h-8 flex items-center justify-center rounded-full"
                 style={{ background: 'var(--glass-bg)', color: 'var(--text-muted)' }}
               >
@@ -113,6 +122,7 @@ export default function Settings({ isOpen, onClose }: SettingsProps) {
                       max={100}
                       value={settings.defaultVolume}
                       onChange={(e) => updateSettings({ defaultVolume: Number(e.target.value) })}
+                      aria-label="Default volume"
                     />
                   </div>
                   <Toggle
@@ -280,8 +290,11 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
     <div className="flex items-center justify-between">
       <SettingLabel>{label}</SettingLabel>
       <button
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
         onClick={() => onChange(!checked)}
-        className="w-10 h-6 rounded-full transition-all relative"
+        className="w-10 h-6 rounded-full transition-all relative focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
         style={{
           background: checked ? 'rgba(79, 195, 247, 0.3)' : 'rgba(255, 255, 255, 0.08)',
           border: `1px solid ${checked ? 'rgba(79, 195, 247, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,

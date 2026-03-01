@@ -122,7 +122,7 @@ export default function MiniPlayer({
         <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={isPaused ? onResume : onPause}
-            className="w-8 h-8 flex items-center justify-center rounded-full glass-hover"
+            className="w-11 h-11 flex items-center justify-center rounded-full glass-hover"
             style={{ color: 'var(--text-primary)' }}
             aria-label={isPaused ? 'Resume' : 'Pause'}
           >
@@ -130,7 +130,7 @@ export default function MiniPlayer({
           </button>
           <button
             onClick={onStop}
-            className="w-8 h-8 flex items-center justify-center rounded-full glass-hover"
+            className="w-11 h-11 flex items-center justify-center rounded-full glass-hover"
             style={{ color: 'var(--text-secondary)' }}
             aria-label="Stop"
           >

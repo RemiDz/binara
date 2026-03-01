@@ -132,7 +132,7 @@ export default function AmbientSelector({
                 </span>
                 <button
                   onClick={() => onRemoveLayer(layer.id)}
-                  className="w-6 h-6 flex items-center justify-center rounded-full text-xs transition-colors flex-shrink-0"
+                  className="w-11 h-11 flex items-center justify-center rounded-full text-xs transition-colors flex-shrink-0 -mr-2"
                   style={{ color: 'var(--text-muted)' }}
                   aria-label={`Remove ${opt.label}`}
                 >

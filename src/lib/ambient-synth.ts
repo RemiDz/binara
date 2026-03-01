@@ -208,6 +208,7 @@ abstract class BaseSynth implements AmbientSynth {
   protected _gainNode: GainNode | null = null;
   protected _active = false;
   protected intervals: ReturnType<typeof setInterval>[] = [];
+  protected timeouts: ReturnType<typeof setTimeout>[] = [];
   protected sources: AudioBufferSourceNode[] = [];
   protected oscillators: OscillatorNode[] = [];
   protected nodes: AudioNode[] = [];
@@ -224,7 +225,9 @@ abstract class BaseSynth implements AmbientSynth {
   stop(): void {
     this._active = false;
     for (const i of this.intervals) clearInterval(i);
+    for (const t of this.timeouts) clearTimeout(t);
     this.intervals = [];
+    this.timeouts = [];
 
     for (const osc of this.oscillators) {
       try { osc.stop(); } catch { /* already stopped */ }
@@ -441,7 +444,6 @@ class BrownNoiseSynth extends BaseSynth {
 
       this.scheduleBrightening(lp);
     }, delay);
-    // Track timeout for cleanup via interval array (reuse for simplicity)
-    this.intervals.push(id as unknown as ReturnType<typeof setInterval>);
+    this.timeouts.push(id);
   }
 }

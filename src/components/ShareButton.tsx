@@ -39,12 +39,12 @@ export default function ShareButton({ session, sessionName, compact = false }: S
       <button
         onClick={handleShare}
         disabled={sharing}
+        className="focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 rounded"
         style={{
           background: 'none',
           border: 'none',
           cursor: 'pointer',
           padding: 0,
-          outline: 'none',
           opacity: sharing ? 0.5 : 0.3,
           transition: 'opacity 0.3s ease',
         }}

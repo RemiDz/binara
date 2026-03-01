@@ -22,6 +22,8 @@ export default function ModeSwitcher() {
   return (
     <div className="sticky top-[52px] z-30 px-4 py-2">
       <div
+        role="tablist"
+        aria-label="App mode"
         className="max-w-5xl mx-auto flex gap-0.5"
         style={{
           padding: 3,
@@ -35,6 +37,8 @@ export default function ModeSwitcher() {
           return (
             <button
               key={m.id}
+              role="tab"
+              aria-selected={isActive}
               onClick={() => handleModeSelect(m.id)}
               className="relative flex-1 flex items-center justify-center gap-1.5 font-[family-name:var(--font-inter)]"
               style={{

@@ -49,8 +49,9 @@ export default function SleepTimer({
           return (
             <button
               key={opt.label}
+              aria-pressed={selected}
               onClick={() => onChange(opt.value)}
-              className="flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-[family-name:var(--font-jetbrains)] transition-all active:scale-[0.96]"
+              className="flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-[family-name:var(--font-jetbrains)] transition-all active:scale-[0.96] min-h-[44px]"
               style={{
                 background: selected ? `${color}25` : 'var(--glass-bg)',
                 border: `1px solid ${selected ? `${color}60` : 'var(--glass-border)'}`,

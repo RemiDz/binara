@@ -176,12 +176,12 @@ export default function PlayerView({
               <button
                 onClick={handleHeart}
                 aria-label={isFavourited ? 'Remove from favourites' : 'Add to favourites'}
+                className="focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 rounded min-w-[44px] min-h-[44px]"
                 style={{
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
                   padding: 2,
-                  outline: 'none',
                   transform: `scale(${heartScale})`,
                   transition: 'transform 0.2s ease',
                 }}

@@ -118,6 +118,7 @@ export default function PresetCard({
           onClick={handleHeartClick}
           onTouchEnd={(e) => e.stopPropagation()}
           aria-label={isFavourited ? 'Remove from favourites' : 'Add to favourites'}
+          className="focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 rounded"
           style={{
             position: 'absolute',
             top: 8,
@@ -132,7 +133,6 @@ export default function PresetCard({
             border: 'none',
             cursor: 'pointer',
             padding: 0,
-            outline: 'none',
             transform: `scale(${heartScale})`,
             transition: 'transform 0.2s ease, opacity 0.3s ease',
             opacity: isFavourited ? 1 : (isHovered || isPreviewing) ? 0.5 : 0.2,
@@ -259,6 +259,7 @@ export default function PresetCard({
               e.stopPropagation();
             }}
             aria-label={isPreviewing ? 'Stop preview' : 'Preview beat'}
+            className="focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
             style={{
               width: 28,
               height: 28,
@@ -275,7 +276,6 @@ export default function PresetCard({
                   : 'transparent',
               cursor: 'pointer',
               padding: 0,
-              outline: 'none',
               animation: isPreviewing ? 'previewPulse 2s ease-in-out infinite' : 'none',
             }}
           >

@@ -1,6 +1,7 @@
 'use client';
 
 import { QUICK_PRESETS } from '@/lib/session-timeline';
+import Slider from '@/components/ui/Slider';
 
 interface TimelineBuilderProps {
   easeIn: number;
@@ -126,28 +127,15 @@ export default function TimelineBuilder({
 
 function SliderRow({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (v: number) => void }) {
   return (
-    <div className="flex items-center gap-3">
-      <span
-        className="font-[family-name:var(--font-inter)] text-xs w-24 flex-shrink-0"
-        style={{ color: 'var(--text-secondary)' }}
-      >
-        {label}
-      </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="flex-1 h-5"
-        aria-label={label}
-      />
-      <span
-        className="font-[family-name:var(--font-jetbrains)] text-xs w-10 text-right flex-shrink-0"
-        style={{ color: 'var(--text-primary)' }}
-      >
-        {value} min
-      </span>
-    </div>
+    <Slider
+      label={label}
+      value={value}
+      min={min}
+      max={max}
+      step={1}
+      suffix="min"
+      color="#4fc3f7"
+      onChange={onChange}
+    />
   );
 }

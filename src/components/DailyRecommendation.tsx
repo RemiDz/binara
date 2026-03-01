@@ -59,6 +59,7 @@ export default function DailyRecommendation({ onSelect }: DailyRecommendationPro
               {/* Dismiss button */}
               <button
                 onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
+                className="focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 rounded min-w-[44px] min-h-[44px]"
                 style={{
                   position: 'absolute',
                   top: 10,
@@ -74,7 +75,6 @@ export default function DailyRecommendation({ onSelect }: DailyRecommendationPro
                   color: 'rgba(255,255,255,0.25)',
                   fontSize: 14,
                   padding: 0,
-                  outline: 'none',
                 }}
                 aria-label="Dismiss recommendation"
               >

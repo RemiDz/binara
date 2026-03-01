@@ -186,6 +186,7 @@ export default function SacredGeometry({
     >
       <canvas
         ref={canvasRef}
+        aria-hidden="true"
         className="w-full h-full"
       />
     </div>
