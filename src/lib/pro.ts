@@ -2,9 +2,10 @@
 // Uses LemonSqueezy API for licence activation/validation
 // Persists Pro state to localStorage with offline grace period
 
-// ━━━ TESTING MODE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Reads from env var NEXT_PUBLIC_PRO_TESTING_MODE. Defaults to false.
-const TESTING_MODE = process.env.NEXT_PUBLIC_PRO_TESTING_MODE === 'true';
+// ━━━ SOFT LAUNCH: ALL USERS GET PRO ━━━━━━━━━━━━━━━
+// TODO: Re-enable Pro gating when LemonSqueezy is integrated
+// Change back to: const TESTING_MODE = process.env.NEXT_PUBLIC_PRO_TESTING_MODE === 'true';
+const TESTING_MODE = true;
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export interface ProState {
