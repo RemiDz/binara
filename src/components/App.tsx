@@ -255,32 +255,45 @@ export default function App() {
         // Phase tracking — calculate current phase and update oscillator frequency
         const preset = activePresetRef.current;
         if (preset) {
-          const timerVal = sleepTimerRef.current;
-          const effectiveSecs = timerVal !== null ? timerToSeconds(timerVal) : state.sessionDuration * 60;
-          const isSleep = preset.category === 'sleep';
-          const startFreq = getEaseInStartFreq(preset.brainwaveState);
+          const isInterval = preset.rightFreq !== undefined;
 
-          const phaseInfo = getSessionPhaseInfo(
-            elapsed, effectiveSecs, preset.beatFreq, startFreq, isSleep,
-          );
+          if (isInterval) {
+            // Musical interval presets: hold exact frequencies, no ramping
+            const timerVal = sleepTimerRef.current;
+            const effectiveSecs = timerVal !== null ? timerToSeconds(timerVal) : state.sessionDuration * 60;
+            const totalProgress = effectiveSecs > 0 ? Math.min(elapsed / effectiveSecs, 1) : 0;
+            setListenPhase('deep');
+            setListenBeatFreq(preset.beatFreq);
+            setListenTotalProgress(totalProgress);
+            currentBeatFreqRef.current = preset.beatFreq;
+            audio.setFrequency(preset.carrierFreq, preset.rightFreq!);
+          } else {
+            // Standard binaural beat presets: ease-in/deep/ease-out frequency ramping
+            const timerVal = sleepTimerRef.current;
+            const effectiveSecs = timerVal !== null ? timerToSeconds(timerVal) : state.sessionDuration * 60;
+            const isSleep = preset.category === 'sleep';
+            const startFreq = getEaseInStartFreq(preset.brainwaveState);
 
-          setListenPhase(phaseInfo.phase);
-          setListenBeatFreq(phaseInfo.currentBeatFreq);
-          setListenTotalProgress(phaseInfo.totalProgress);
-          currentBeatFreqRef.current = phaseInfo.currentBeatFreq;
+            const phaseInfo = getSessionPhaseInfo(
+              elapsed, effectiveSecs, preset.beatFreq, startFreq, isSleep,
+            );
 
-          // Update oscillator frequency (setTargetAtTime handles smooth transitions)
-          audio.setFrequency(preset.carrierFreq, preset.carrierFreq + phaseInfo.currentBeatFreq);
+            setListenPhase(phaseInfo.phase);
+            setListenBeatFreq(phaseInfo.currentBeatFreq);
+            setListenTotalProgress(phaseInfo.totalProgress);
+            currentBeatFreqRef.current = phaseInfo.currentBeatFreq;
+
+            // Update oscillator frequency (setTargetAtTime handles smooth transitions)
+            audio.setFrequency(preset.carrierFreq, preset.carrierFreq + phaseInfo.currentBeatFreq);
+          }
 
           // Sync haptic engine with current beat freq and phase
           if (hapticEngineRef.current && hapticActiveRef.current) {
-            hapticEngineRef.current.setBeatFreq(phaseInfo.currentBeatFreq);
-            // Phase multiplier: ramp during ease-in/out, full during deep
-            const phaseMult = phaseInfo.phase === 'easeIn'
-              ? phaseInfo.totalProgress * 5 // ramp up over first 20%
-              : phaseInfo.phase === 'easeOut'
-              ? Math.max(0, (1 - phaseInfo.totalProgress) * 5) // ramp down in last 20%
-              : 1;
+            hapticEngineRef.current.setBeatFreq(currentBeatFreqRef.current);
+            // Interval presets stay in deep phase; standard presets ramp
+            const phaseMult = isInterval ? 1
+              : currentBeatFreqRef.current === preset.beatFreq ? 1
+              : 0.5;
             hapticEngineRef.current.setPhaseMultiplier(Math.min(1, phaseMult));
           }
         }
@@ -628,12 +641,16 @@ export default function App() {
     const preset = state.activePreset;
     trackEvent('Session Start', { mode: 'easy' });
 
-    // Start at ease-in frequency (session phases ramp to target)
-    const startFreq = getEaseInStartFreq(preset.brainwaveState);
+    const isInterval = preset.rightFreq !== undefined;
+
+    // Interval presets: use exact rightFreq, no ramping
+    // Standard presets: start at ease-in frequency, session phases ramp to target
+    const startFreq = isInterval ? preset.beatFreq : getEaseInStartFreq(preset.brainwaveState);
+    const rightFreqStart = isInterval ? preset.rightFreq! : preset.carrierFreq + startFreq;
 
     await audio.play({
       carrierFreqLeft: preset.carrierFreq,
-      carrierFreqRight: preset.carrierFreq + startFreq,
+      carrierFreqRight: rightFreqStart,
       masterVolume: state.volume / 100 * 0.3,
       waveform: 'sine',
       fadeInDuration: preset.fadeIn,
@@ -642,10 +659,10 @@ export default function App() {
     audio.setVolume(state.volume);
 
     // Reset phase state
-    setListenPhase('easeIn');
-    setListenBeatFreq(startFreq);
+    setListenPhase(isInterval ? 'deep' : 'easeIn');
+    setListenBeatFreq(isInterval ? preset.beatFreq : startFreq);
     setListenTotalProgress(0);
-    currentBeatFreqRef.current = startFreq;
+    currentBeatFreqRef.current = isInterval ? preset.beatFreq : startFreq;
 
     dispatch({ type: 'SET_IS_PLAYING', payload: true });
     dispatch({ type: 'SET_IS_PAUSED', payload: false });

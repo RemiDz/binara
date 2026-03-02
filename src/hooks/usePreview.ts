@@ -93,7 +93,10 @@ export function usePreview() {
     leftOsc.type = 'sine';
     rightOsc.type = 'sine';
     leftOsc.frequency.setValueAtTime(preset.carrierFreq, now);
-    rightOsc.frequency.setValueAtTime(preset.carrierFreq + preset.beatFreq, now);
+    rightOsc.frequency.setValueAtTime(
+      preset.rightFreq !== undefined ? preset.rightFreq : preset.carrierFreq + preset.beatFreq,
+      now,
+    );
 
     leftOsc.connect(leftGain);
     rightOsc.connect(rightGain);

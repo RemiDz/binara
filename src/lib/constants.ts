@@ -6,14 +6,16 @@ export const BRAINWAVE_COLORS: Record<BrainwaveState, string> = {
   alpha: '#4fc3f7',
   beta: '#ffab40',
   gamma: '#e040fb',
+  harmony: '#8B5CF6',
 };
 
 export const BRAINWAVE_LABELS: Record<BrainwaveState, string> = {
-  delta: 'Delta (0.5–4 Hz)',
-  theta: 'Theta (4–8 Hz)',
-  alpha: 'Alpha (8–12 Hz)',
-  beta: 'Beta (12–30 Hz)',
-  gamma: 'Gamma (30–50 Hz)',
+  delta: 'Delta (0.5\u20134 Hz)',
+  theta: 'Theta (4\u20138 Hz)',
+  alpha: 'Alpha (8\u201312 Hz)',
+  beta: 'Beta (12\u201330 Hz)',
+  gamma: 'Gamma (30\u201350 Hz)',
+  harmony: 'Harmony',
 };
 
 export const BRAINWAVE_DESCRIPTIONS: Record<BrainwaveState, string> = {
@@ -22,6 +24,7 @@ export const BRAINWAVE_DESCRIPTIONS: Record<BrainwaveState, string> = {
   alpha: 'Relaxation, calm focus',
   beta: 'Concentration, active thinking',
   gamma: 'Peak awareness, information processing',
+  harmony: 'Musical consonance, harmonic resonance',
 };
 
 export const CATEGORIES: Category[] = [
@@ -31,6 +34,7 @@ export const CATEGORIES: Category[] = [
   { id: 'relaxation', label: 'Relaxation', icon: '\u{1F60C}', description: 'Release tension and unwind' },
   { id: 'energy', label: 'Energy', icon: '\u{26A1}', description: 'Boost alertness and vitality' },
   { id: 'therapy', label: 'Therapy', icon: '\u{1F3AF}', description: 'Targeted frequency support' },
+  { id: 'intervals', label: 'Intervals', icon: '\u{1F3B5}', description: 'Musical interval relationships for harmonic listening' },
 ];
 
 export const AMBIENT_OPTIONS: AmbientOption[] = [

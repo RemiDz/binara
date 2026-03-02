@@ -195,12 +195,29 @@ export default function PlayerView({
                 </svg>
               </button>
             </div>
-            <p
-              className="font-[family-name:var(--font-jetbrains)] text-[11px]"
-              style={{ color: preset.color }}
-            >
-              {preset.brainwaveLabel} {"·"} {preset.beatFreq} Hz
-            </p>
+            {preset.category === 'intervals' ? (
+              <div className="space-y-0.5">
+                <p
+                  className="font-[family-name:var(--font-jetbrains)] text-[11px]"
+                  style={{ color: preset.color === '#FFFFFF' ? 'rgba(255,255,255,0.8)' : preset.color }}
+                >
+                  {preset.brainwaveLabel}
+                </p>
+                <p
+                  className="font-[family-name:var(--font-jetbrains)] text-[10px]"
+                  style={{ color: 'rgba(255,255,255,0.4)' }}
+                >
+                  {"L: "}{preset.carrierFreq}{" Hz \u00B7 R: "}{preset.rightFreq}{" Hz"}
+                </p>
+              </div>
+            ) : (
+              <p
+                className="font-[family-name:var(--font-jetbrains)] text-[11px]"
+                style={{ color: preset.color }}
+              >
+                {preset.brainwaveLabel} {"\u00B7"} {preset.beatFreq} Hz
+              </p>
+            )}
           </div>
 
           {/* Timer (when playing) */}

@@ -2,9 +2,9 @@ import type { AdvancedSessionConfig } from './advanced';
 export type { AdvancedWaveform, EasingType, LFOTarget, FilterType, IsochronicShape, BeatLayer, StereoConfig, LFOConfig, IsochronicConfig, FilterConfig, AdvancedTimelinePhase, AdvancedSessionConfig, SavedAdvancedSession } from './advanced';
 export { createDefaultBeatLayer, createDefaultAdvancedConfig } from './advanced';
 
-export type BrainwaveState = 'delta' | 'theta' | 'alpha' | 'beta' | 'gamma';
+export type BrainwaveState = 'delta' | 'theta' | 'alpha' | 'beta' | 'gamma' | 'harmony';
 
-export type PresetCategory = 'focus' | 'sleep' | 'meditation' | 'relaxation' | 'energy' | 'therapy';
+export type PresetCategory = 'focus' | 'sleep' | 'meditation' | 'relaxation' | 'energy' | 'therapy' | 'intervals';
 
 export type AppMode = 'listen' | 'mix' | 'create';
 
@@ -22,6 +22,12 @@ export interface Preset {
   fadeIn: number;
   fadeOut: number;
   color: string;
+  // Musical interval presets
+  intervalName?: string;
+  intervalRatio?: string;
+  ratioNumerator?: number;
+  ratioDenominator?: number;
+  rightFreq?: number;
 }
 
 export interface Category {

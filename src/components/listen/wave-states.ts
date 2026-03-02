@@ -14,4 +14,5 @@ export const WAVE_STATES: Record<BrainwaveState, WaveStateConfig> = {
   alpha: { color: '#4ECDC4', glow: 'rgba(78,205,196,0.3)', label: 'Alpha', range: '8–14 Hz', symbol: 'α' },
   beta:  { color: '#F7B731', glow: 'rgba(247,183,49,0.3)', label: 'Beta', range: '14–30 Hz', symbol: 'β' },
   gamma: { color: '#FC5C65', glow: 'rgba(252,92,101,0.3)', label: 'Gamma', range: '30–100 Hz', symbol: 'γ' },
+  harmony: { color: '#8B5CF6', glow: 'rgba(139,92,246,0.3)', label: 'Harmony', range: 'Musical', symbol: '♫' },
 };

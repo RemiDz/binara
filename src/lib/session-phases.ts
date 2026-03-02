@@ -8,6 +8,7 @@ export function getEaseInStartFreq(targetState: BrainwaveState): number {
     case 'alpha': return 14;  // Low Beta 14 Hz
     case 'beta':  return 10;  // Alpha 10 Hz
     case 'gamma': return 20;  // Beta 20 Hz
+    case 'harmony': return 0; // No ramping for musical intervals
   }
 }
 

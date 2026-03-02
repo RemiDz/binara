@@ -149,7 +149,33 @@ export default function PresetCard({
 
         {/* Top row: ring + name + freq */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-          <FrequencyRing wave={preset.brainwaveState} freq={preset.beatFreq} isHovered={isHovered || isPreviewing} />
+          {preset.category === 'intervals' ? (
+            <div style={{
+              width: 44,
+              height: 44,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '50%',
+              border: `1.5px solid ${(isHovered || isPreviewing) ? preset.color : preset.color + '40'}`,
+              background: (isHovered || isPreviewing) ? preset.color + '15' : 'transparent',
+              transition: 'all 0.4s ease',
+            }}>
+              <span style={{
+                fontFamily: 'var(--font-jetbrains), monospace',
+                fontSize: 11,
+                fontWeight: 600,
+                color: preset.color,
+                opacity: (isHovered || isPreviewing) ? 1 : 0.7,
+                transition: 'opacity 0.4s ease',
+              }}>
+                {preset.intervalRatio}
+              </span>
+            </div>
+          ) : (
+            <FrequencyRing wave={preset.brainwaveState} freq={preset.beatFreq} isHovered={isHovered || isPreviewing} />
+          )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               fontFamily: 'var(--font-cormorant), Georgia, serif',
@@ -162,40 +188,53 @@ export default function PresetCard({
             }}>
               {preset.name}
             </div>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              marginTop: 4,
-            }}>
-              <span style={{
-                fontFamily: 'var(--font-jetbrains), monospace',
-                fontSize: 10.5,
-                fontWeight: 500,
-                color: waveState.color,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                opacity: (isHovered || isPreviewing) ? 1 : 0.7,
-                transition: 'opacity 0.3s ease',
+            {preset.category === 'intervals' ? (
+              <div style={{ marginTop: 4 }}>
+                <span style={{
+                  fontFamily: 'var(--font-jetbrains), monospace',
+                  fontSize: 10,
+                  color: 'rgba(255,255,255,0.4)',
+                  letterSpacing: '0.04em',
+                }}>
+                  {"L: "}{preset.carrierFreq}{" Hz \u00B7 R: "}{preset.rightFreq}{" Hz"}
+                </span>
+              </div>
+            ) : (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                marginTop: 4,
               }}>
-                {waveState.label}
-              </span>
-              <span style={{
-                width: 3,
-                height: 3,
-                borderRadius: '50%',
-                background: 'rgba(255,255,255,0.15)',
-                flexShrink: 0,
-              }} />
-              <span style={{
-                fontFamily: 'var(--font-jetbrains), monospace',
-                fontSize: 10.5,
-                color: 'rgba(255,255,255,0.35)',
-                letterSpacing: '0.04em',
-              }}>
-                {preset.beatFreq} Hz
-              </span>
-            </div>
+                <span style={{
+                  fontFamily: 'var(--font-jetbrains), monospace',
+                  fontSize: 10.5,
+                  fontWeight: 500,
+                  color: waveState.color,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  opacity: (isHovered || isPreviewing) ? 1 : 0.7,
+                  transition: 'opacity 0.3s ease',
+                }}>
+                  {waveState.label}
+                </span>
+                <span style={{
+                  width: 3,
+                  height: 3,
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.15)',
+                  flexShrink: 0,
+                }} />
+                <span style={{
+                  fontFamily: 'var(--font-jetbrains), monospace',
+                  fontSize: 10.5,
+                  color: 'rgba(255,255,255,0.35)',
+                  letterSpacing: '0.04em',
+                }}>
+                  {preset.beatFreq} Hz
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

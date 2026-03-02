@@ -91,7 +91,7 @@ export default function PreviewBar({ preset, progress, onStop, bottomOffset = 0 
               className="font-[family-name:var(--font-jetbrains)] text-[10px]"
               style={{ color, opacity: 0.8 }}
             >
-              {waveState.label} {"·"} {preset.beatFreq} Hz
+              {preset.category === 'intervals' ? preset.brainwaveLabel : <>{waveState.label} {"\u00B7"} {preset.beatFreq} Hz</>}
             </p>
           </div>
 
