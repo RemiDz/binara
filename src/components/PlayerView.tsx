@@ -9,16 +9,6 @@ import VolumeSlider from './VolumeSlider';
 import SensorToggle from './SensorToggle';
 import AutoMotionToggle from './AutoMotionToggle';
 import HapticToggle from './HapticToggle';
-import SacredGeometry, { GeometryToggle } from './SacredGeometry';
-import type { GeometryType } from '@/lib/sacred-geometry';
-
-const VIS_GLASS = {
-  background: 'rgba(5,5,8,0.7)',
-  backdropFilter: 'blur(10px)',
-  WebkitBackdropFilter: 'blur(10px)',
-  borderRadius: 16,
-  padding: '12px 16px',
-} as const;
 import AmbientSelector from './AmbientSelector';
 import SleepTimer from './SleepTimer';
 import PhaseIndicator from './PhaseIndicator';
@@ -105,9 +95,6 @@ export default function PlayerView({
 }: PlayerViewProps) {
   const playerState = !isPlaying && !isPaused ? 'pre-play' : isPlaying && !isPaused ? 'playing' : 'paused';
   const [heartScale, setHeartScale] = useState(1);
-  const [geometryActive, setGeometryActive] = useState(false);
-  const visActive = geometryActive && (isPlaying || isPaused);
-  const [geometryType, setGeometryType] = useState<GeometryType>('circles');
   const handleHeart = useCallback(() => {
     setHeartScale(1.3);
     setTimeout(() => setHeartScale(1), 200);
@@ -122,21 +109,11 @@ export default function PlayerView({
       transition={{ duration: 0.3 }}
       className="relative z-10 min-h-dvh flex flex-col overflow-hidden"
     >
-      {/* Background visualiser (hidden when sacred geometry is active) */}
-      {!visActive && (
-        <BackgroundVisualiser
-          beatFrequency={preset.beatFreq}
-          isPlaying={isPlaying && !isPaused}
-          color={preset.color}
-        />
-      )}
-
-      {/* Sacred Geometry — full screen immersive canvas */}
-      <SacredGeometry
-        isActive={geometryActive && (isPlaying || isPaused)}
-        geometryType={geometryType}
-        beatFreq={listenBeatFreq || preset.beatFreq}
-        ambientActive={ambientLayers.length > 0}
+      {/* Background visualiser */}
+      <BackgroundVisualiser
+        beatFrequency={preset.beatFreq}
+        isPlaying={isPlaying && !isPaused}
+        color={preset.color}
       />
 
       {/* Content layer */}
@@ -162,7 +139,7 @@ export default function PlayerView({
         {/* Scrollable content */}
         <div
           className="flex-1 overflow-y-auto pb-6 space-y-4"
-          style={visActive ? { ...VIS_GLASS, margin: '0 8px' } : { padding: '0 16px' }}
+          style={{ padding: '0 16px' }}
         >
           {/* Session info */}
           <div className="text-center space-y-0.5">
@@ -309,17 +286,6 @@ export default function PlayerView({
               intensity={hapticIntensity ?? 50}
               onToggle={onHapticToggle}
               onIntensityChange={onHapticIntensityChange ?? (() => {})}
-              color={preset.color}
-            />
-          )}
-
-          {/* Sacred Geometry toggle */}
-          {(isPlaying || isPaused) && (
-            <GeometryToggle
-              isActive={geometryActive}
-              onToggle={() => setGeometryActive(!geometryActive)}
-              geometryType={geometryType}
-              onGeometryChange={setGeometryType}
               color={preset.color}
             />
           )}

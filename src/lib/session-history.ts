@@ -15,7 +15,6 @@ export interface SessionLog {
   ambientLayers: string[];
   sensorsUsed: boolean;
   hapticUsed: boolean;
-  visualisation?: string;
 }
 
 export interface StreakData {
@@ -82,7 +81,6 @@ export function createSessionLog(opts: {
   ambientLayers: string[];
   sensorsUsed: boolean;
   hapticUsed: boolean;
-  visualisation?: string;
 }): SessionLog | null {
   const durationMinutes = Math.round(opts.elapsedSeconds / 60);
   // Don't log sessions under 1 minute
@@ -104,7 +102,6 @@ export function createSessionLog(opts: {
     ambientLayers: opts.ambientLayers,
     sensorsUsed: opts.sensorsUsed,
     hapticUsed: opts.hapticUsed,
-    visualisation: opts.visualisation,
   };
 }
 
